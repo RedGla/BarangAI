@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, post } from '../../lib/api'
-import type { DuplicateResult, Report, Status, StaffAction } from './types'
+import type { CommunityCase, DuplicateResult, Report, ReportCase, Status, StaffAction } from './types'
 
 export const reportKeys = {
   all: ['reports'] as const,
   detail: (id: string) => ['reports', id] as const,
   duplicates: (id: string) => ['reports', id, 'duplicates'] as const,
+  case: (id: string) => ['reports', id, 'case'] as const,
+  // Under 'reports' so every report write refreshes the shared map too.
+  community: ['reports', 'community'] as const,
 }
 
 export function useReports() {
@@ -28,6 +31,17 @@ export function useDuplicates(id: string, enabled: boolean) {
     queryFn: () => api<DuplicateResult>(`/reports/${id}/duplicates`),
     enabled,
   })
+}
+
+export function useReportCase(id: string) {
+  return useQuery({
+    queryKey: reportKeys.case(id),
+    queryFn: () => api<{ case: ReportCase | null }>(`/reports/${id}/case`).then(result => result.case),
+  })
+}
+
+export function useCommunityCases(enabled = true) {
+  return useQuery({ queryKey: reportKeys.community, queryFn: () => api<CommunityCase[]>('/cases/map'), enabled })
 }
 
 /** Invalidates every report query (lists, details, duplicates) after a successful write. */
@@ -59,4 +73,12 @@ export function useGenerateDuplicates(id: string) {
 export const useDecideDuplicate = () =>
   useReportMutation(({ id, decision, note }: { id: string; decision: 'confirmed' | 'rejected'; note?: string }) =>
     post(`/duplicates/${id}/decision`, { decision, ...(note ? { note } : {}) }),
+  )
+
+export const useLinkReports = () =>
+  useReportMutation((body: { report_id: string; other_report_id: string }) => post('/cases/link', body))
+
+export const useCaseDecision = (id: string) =>
+  useReportMutation((body: { decision: 'confirmed' | 'rejected'; note?: string }) =>
+    post(`/reports/${id}/case/decision`, body),
   )

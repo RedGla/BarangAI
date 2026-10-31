@@ -24,6 +24,9 @@ const OverviewPage = lazy(() =>
 )
 const QueuePage = lazy(() => import('../features/staff/QueuePage').then(module => ({ default: module.QueuePage })))
 const MapPage = lazy(() => import('../features/staff/MapPage').then(module => ({ default: module.MapPage })))
+const CommunityPage = lazy(() =>
+  import('../features/community/CommunityPage').then(module => ({ default: module.CommunityPage })),
+)
 const ChatPage = lazy(() => import('../features/chat/ChatPage').then(module => ({ default: module.ChatPage })))
 const motionFeatures = () => import('./motionFeatures').then(module => module.default)
 
@@ -81,6 +84,7 @@ function AppRoutes() {
           <Route path="report" element={<ReportForm />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="reports/:id" element={<ReportsPage />} />
+          <Route path="community" element={<CommunityPage />} />
           <Route path="updates" element={<NotificationsPage />} />
           <Route path="help" element={<ChatPage />} />
           <Route path="*" element={<Navigate to="/home" replace />} />

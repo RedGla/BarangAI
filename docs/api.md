@@ -14,17 +14,21 @@ Local development: Vite proxies `/api` to FastAPI on port 8000. The selected Ren
 | GET | `/health` | Public | Process readiness response. |
 | POST | `/reports/predict` | Resident | Multipart `image`, optional `language` (`en`/`fil`/`taglish`). Returns what the AI can pre-fill: `prediction_available`, `model_category`, `confidence` (checker), `category_source` (`agreed`/`vision`/`checker`), `needs_check`, `problem_seen` (`false` when nothing looks broken; the category is then the closest guess and the description says the AI is uncertain), `suggested_description`, `hazards`. Requires CSRF. |
 | GET | `/geo/reverse?lat=&lng=` | Signed in | `{label}`: street name from OpenStreetMap Nominatim, or `null`. 503 unless `GEOCODER=nominatim`. |
-| POST | `/reports` | Resident | Multipart `image`, `latitude`, `longitude`, `resident_category`, optional `description` (trimmed, at most 1,000 characters). The server adds `model_category`, `hazards` and `location_label` itself. |
-| GET | `/reports` | Signed in | Own reports for residents; all for staff/admin. |
-| GET | `/reports/{id}` | Owner or staff/admin | Report with status events and staff actions. |
+| POST | `/reports` | Resident | Multipart `image`, `latitude`, `longitude`, `resident_category`, optional `description` (trimmed, at most 1,000 characters), optional `case_id` ("I see this too": only an Accepted or In Progress case; 404 for unknown or non-public cases, 409 when resolved). The server adds `model_category`, `hazards` and `location_label` itself. |
+| GET | `/reports` | Signed in | Own reports for residents; all for staff/admin, each with a suggested `priority` (`{level:"high"|"medium"|"low",score,reasons:[{code,detail,points}]}`, or `null` once closed). A grouped case is scored once from its confirmed reports. Residents never receive `priority`. |
+| GET | `/reports/{id}` | Owner or staff/admin | Report with status events and staff actions; staff also get `priority`. |
 | GET | `/reports/{id}/image` | Owner or staff/admin | Sanitized private JPEG. |
-| POST | `/reports/{id}/status` | Staff/admin | `{status,verified_category?,note?}` with exact transition graph. |
+| POST | `/reports/{id}/status` | Staff/admin | `{status,verified_category?,note?}` with exact transition graph. Moves every report of a grouped case; 409 while an "I see this too" link is unchecked. |
 | POST | `/reports/{id}/actions` | Staff/admin | `{kind:"action"|"coordination",note}`. |
 | GET | `/notifications` | Signed in | Latest 100 notifications belonging to the caller. |
 | POST | `/notifications/{id}/read` | Owner | Mark a notification read; requires CSRF. |
 | GET | `/reports/{id}/duplicates` | Staff/admin | Saved suggestions, or an explicit unavailable response. |
 | POST | `/reports/{id}/duplicates/generate` | Staff/admin | Generate idempotent suggestions when validated embeddings exist. |
 | POST | `/duplicates/{id}/decision` | Staff/admin | `{decision:"confirmed"|"rejected",note?}`. |
+| POST | `/cases/link` | Staff/admin | `{report_id,other_report_id}`: one incident. Creates, joins or merges cases; every report walks the status path to the case's furthest status. 409 for Rejected reports, unchecked "I see this too" links, or a Resolved case. |
+| GET | `/reports/{id}/case` | Owner or staff/admin | `{case}` or `{case:null}`. Staff also get `members`; residents get `reports`/`contributors` only once the case is public. |
+| POST | `/reports/{id}/case/decision` | Staff/admin | `{decision:"confirmed"|"rejected",note?}` on a resident's "I see this too" link. |
+| GET | `/cases/map` | Signed in | Accepted, In Progress and Resolved cases: category, status, pin rounded to 4 decimals, street, first/last report day (Philippine time), distinct residents, hazards, `open_for_evidence`, `contributed`. No photos, descriptions, report ids or names. |
 | POST | `/chat` | Resident | `{message,language:"en"|"fil"|"taglish",report_id?}`. Generic guidance may use Workers AI; report status stays deterministic and owner-scoped. |
 
 Categories: `flooding`, `fallen_trees`, `broken_streetlights`, `exposed_wiring`, `potholes`, `uncollected_garbage`, `damaged_signage`, `other`. The AI suggests from all eight; residents can change any suggestion. Status sequence: `Pending`, `Under Verification`, `Accepted`, `In Progress`, `Resolved`; verification may instead end in `Rejected`. A report has distinct `model_category`, `resident_category`, and `verified_category`. The API never accepts a client-supplied model category: submission reuses the server's own analysis of the same photo from the preview (kept 30 minutes by photo hash), or runs only the local checker when there is none. On `/reports/predict`, `prediction_available:false` means neither model answered; on a report, it means no checker embedding was stored. An uncertain prediction can be available with `model_category:null`. Another resident's report or image returns 404.

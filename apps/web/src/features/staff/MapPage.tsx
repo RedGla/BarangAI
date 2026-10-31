@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { NativeSelect } from '@/components/ui/native-select'
 import { useText } from '../../lib/i18n'
 import { statuses } from '../reports/categories'
+import { groupCases } from '../reports/grouping'
 import { useReports } from '../reports/queries'
 import { MapLegend, StaffMap } from './StaffMap'
 
@@ -13,7 +14,9 @@ export function MapPage() {
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
   const all = reports.data
-  const visible = useMemo(() => (all ?? []).filter(report => !status || report.status === status), [all, status])
+  // One pin per grouped case.
+  const rows = useMemo(() => groupCases(all ?? []).rows, [all])
+  const visible = useMemo(() => rows.filter(report => !status || report.status === status), [rows, status])
   return (
     <div className="relative h-[calc(100svh-3.5rem)] md:h-[calc(100svh-3.5rem-1rem)]">
       <StaffMap
@@ -38,7 +41,7 @@ export function MapPage() {
           </NativeSelect>
         </label>
         <p className="text-[12.5px] text-muted-foreground">
-          {visible.length} {t('of')} {all?.length ?? 0} {t('reports')} · {t('Click a pin to open it.')}
+          {visible.length} {t('of')} {rows.length} {t('reports')} · {t('Click a pin to open it.')}
         </p>
         <MapLegend />
       </div>

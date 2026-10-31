@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { ImageOff, MapPin, Sparkles, TriangleAlert } from 'lucide-react'
+import { Link } from 'react-router'
+import { ImageOff, Layers, MapPin, Sparkles, TriangleAlert, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,14 +11,18 @@ import { cn } from '@/lib/utils'
 import { Txt, useText } from '../../lib/i18n'
 import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
+import { PriorityPanel } from './Priority'
 import { STATUS_STYLE, StatusBadge } from './StatusBadge'
 import {
+  useCaseDecision,
   useChangeStatus,
   useDecideDuplicate,
   useDuplicates,
   useGenerateDuplicates,
+  useLinkReports,
   useLogAction,
   useReport,
+  useReportCase,
 } from './queries'
 import type { Category, Duplicate, Report, StaffAction, Status } from './types'
 
@@ -102,6 +107,7 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
           onError={() => setImageError(true)}
         />
       )}
+      {detail && !staff && detail.case_id && <ResidentCaseNote id={id} />}
       {detail && <ReportFacts detail={detail} />}
     </>
   )
@@ -111,7 +117,12 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
       {staff && (
         <div className="space-y-5 xl:sticky xl:top-4">
           {/* Seed staff choices from the full report, never the list row, and reset them per report. */}
-          {detail && !report.isPlaceholderData && <StatusControls key={detail.id} detail={detail} />}
+          {/* An unchecked "I see this too" gets its case decision first; the API refuses status changes until then. */}
+          {detail && !report.isPlaceholderData && !(detail.case_id && !detail.case_confirmed) && (
+            <StatusControls key={detail.id} detail={detail} />
+          )}
+          {detail?.priority && !report.isPlaceholderData && <PriorityPanel priority={detail.priority} />}
+          {detail?.case_id && <CasePanel id={id} />}
           <ActionForm id={id} />
           <DuplicateReview id={id} />
         </div>
@@ -338,14 +349,23 @@ function DuplicateReview({ id }: { id: string }) {
   const duplicates = useDuplicates(id, true)
   const generate = useGenerateDuplicates(id)
   const decide = useDecideDuplicate()
+  const link = useLinkReports()
+  const inCase = new Set(useReportCase(id).data?.members?.map(member => member.id))
   // One draft note per suggestion, so text typed under one never goes out with another.
   const [notes, setNotes] = useState<Record<string, string>>({})
-  const busy = generate.isPending || decide.isPending
-  const error = duplicates.error ?? generate.error ?? decide.error
+  const busy = generate.isPending || decide.isPending || link.isPending
+  const error = duplicates.error ?? generate.error ?? decide.error ?? link.error
+  const group = (item: Duplicate) => link.mutate({ report_id: id, other_report_id: item.candidate_report_id })
   function decideOn(item: Duplicate, decision: 'confirmed' | 'rejected') {
     decide.mutate(
       { id: item.id, decision, note: notes[item.id]?.trim() || undefined },
-      { onSuccess: () => setNotes(current => ({ ...current, [item.id]: '' })) },
+      {
+        onSuccess: () => {
+          setNotes(current => ({ ...current, [item.id]: '' }))
+          // The same incident becomes one case on the dashboard; each report keeps its own photo and history.
+          if (decision === 'confirmed') group(item)
+        },
+      },
     )
   }
   const result = duplicates.data
@@ -379,6 +399,18 @@ function DuplicateReview({ id }: { id: string }) {
               <small className="block text-[13px] text-muted-foreground">
                 <Txt>Similarity score</Txt> {item.score.toFixed(2)} · <Txt>{item.decision}</Txt>
               </small>
+              {item.decision === 'confirmed' && inCase.has(item.candidate_report_id) && (
+                <p className="flex items-center gap-1.5 text-[13px] font-medium text-primary">
+                  <Layers className="size-3.5" aria-hidden="true" />
+                  <Txt>In this case</Txt>
+                </p>
+              )}
+              {item.decision === 'confirmed' && !inCase.has(item.candidate_report_id) && (
+                <Button size="sm" variant="secondary" type="button" disabled={busy} onClick={() => group(item)}>
+                  <Layers />
+                  <Txt>Group into one case</Txt>
+                </Button>
+              )}
               {item.decision === 'pending' && (
                 <>
                   <label className={fieldLabel}>
@@ -417,6 +449,116 @@ function DuplicateReview({ id }: { id: string }) {
       {error && (
         <Alert>
           <Txt>{error.message}</Txt>
+        </Alert>
+      )}
+    </Panel>
+  )
+}
+
+/** Resident view: their report is part of a case, with how many residents reported it. Never other reports. */
+function ResidentCaseNote({ id }: { id: string }) {
+  const t = useText()
+  const info = useReportCase(id).data
+  if (!info) return null
+  return (
+    <p className="flex items-start gap-2.5 rounded-2xl bg-tint p-3.5 text-[14.5px]">
+      <Users className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+      <span>
+        {info.confirmed && info.contributors == null ? (
+          <Txt>Staff have grouped your report with others about the same issue.</Txt>
+        ) : info.confirmed ? (
+          <>
+            <strong className="font-semibold">
+              {info.contributors} {t(info.contributors === 1 ? 'resident reported this' : 'residents reported this')}
+            </strong>
+            <span className="block text-muted-foreground">
+              <Txt>The barangay handles these reports together as one case.</Txt>
+            </span>
+          </>
+        ) : (
+          <Txt>You added this to a reported issue. Barangay staff will check that it is the same one.</Txt>
+        )}
+      </span>
+    </p>
+  )
+}
+
+/** Staff view of a grouped case: its reports, and the decision on a resident's "I see this too". */
+function CasePanel({ id }: { id: string }) {
+  const t = useText()
+  const info = useReportCase(id)
+  const decide = useCaseDecision(id)
+  const [note, setNote] = useState('')
+  const data = info.data
+  if (!data) return null
+  const others = (data.members ?? []).filter(member => member.id !== id)
+  return (
+    <Panel title="Grouped case" className="space-y-3">
+      <p className="text-[14px] text-muted-foreground">
+        <span className="font-mono">#{data.id.slice(0, 8).toUpperCase()}</span> · {data.reports} {t('reports')} ·{' '}
+        {data.contributors} {t('residents')}
+        {data.status && (
+          <>
+            {' · '}
+            <Txt>{data.status}</Txt>
+          </>
+        )}
+      </p>
+      {data.confirmed ? (
+        <p className="text-[14px] text-muted-foreground">
+          <Txt>Status changes here apply to every report in the case.</Txt>
+        </p>
+      ) : (
+        <div className="space-y-2 rounded-xl bg-muted p-3">
+          <p className="text-[14px]">
+            <Txt>The resident says this is the same issue. Check before changing its status.</Txt>
+          </p>
+          <label className={fieldLabel}>
+            <Txt>Decision note (optional)</Txt>
+            <Input
+              maxLength={2000}
+              value={note}
+              onChange={event => setNote(event.target.value)}
+              className="h-9 text-foreground"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {(['confirmed', 'rejected'] as const).map(decision => (
+              <Button
+                key={decision}
+                size="sm"
+                variant={decision === 'confirmed' ? 'default' : 'outline'}
+                type="button"
+                disabled={decide.isPending}
+                onClick={() => decide.mutate({ decision, ...(note.trim() ? { note: note.trim() } : {}) })}
+              >
+                <Txt>{decision === 'confirmed' ? 'Same issue · add to case' : 'Different issue'}</Txt>
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+      {others.length > 0 && (
+        <ul className="space-y-1">
+          {others.map(member => (
+            <li key={member.id}>
+              <Link
+                to={`/desk/reports/${member.id}`}
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[14px] transition-colors hover:bg-accent"
+              >
+                <span className="font-mono">#{member.id.slice(0, 8).toUpperCase()}</span>
+                <span className="text-muted-foreground">
+                  {member.confirmed ? <Txt>{member.status}</Txt> : <Txt>To check</Txt>} ·{' '}
+                  <DateText value={member.created_at} />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(decide.error ?? info.error) && (
+        <Alert>
+          <Txt>{(decide.error ?? info.error)!.message}</Txt>
         </Alert>
       )}
     </Panel>

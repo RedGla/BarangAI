@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import ai, geo
+from . import ai, geo, priority
 from .auth import get_current_user, rate_limit, require_csrf, require_role
 from .db import get_db
 from .media import delete_image, image_response, sanitize_image, save_image
@@ -28,6 +28,8 @@ def serialize_report(report, detail=False):
         "location_label": report.location_label,
         "hazards": report.hazards or [],
         "status": report.status,
+        "case_id": report.case_id,
+        "case_confirmed": report.case_confirmed,
         "created_at": utc_iso(report.created_at),
         "updated_at": utc_iso(report.updated_at),
         "image_url": f"/api/reports/{report.id}/image",
@@ -97,6 +99,7 @@ def submit_report(
     longitude: float = Form(...),
     resident_category: str = Form(...),
     description: str | None = Form(None),
+    case_id: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_csrf),
 ):
@@ -107,6 +110,9 @@ def submit_report(
     description = description.strip() if description else None
     if description and len(description) > 1000:
         raise HTTPException(422, "Description is too long")
+    from . import cases  # Imported here: cases.py builds on this module.
+
+    case = cases.open_case_for_evidence(db, case_id) if case_id else None
     sanitized = sanitized_upload(image)
     # The model's category, hazards, embedding and street name come from the server, never the client.
     analysis = ai.for_submission(sanitized)
@@ -122,6 +128,8 @@ def submit_report(
         hazards=list(analysis.hazards) or None,
         image_embedding=analysis.embedding,
         embedding_model_version=analysis.embedding_version,
+        # "I see this too": linked to the case, counted only after staff confirm it.
+        case_id=case.id if case else None,
     )
     db.add(report)
     db.flush()
@@ -140,6 +148,12 @@ def submit_report(
                 logging.getLogger(__name__).error("Could not clean up image for rolled-back report %s", report.id)
         raise
     db.refresh(report)
+    try:
+        cases.suggest_duplicates(db, report)
+    except Exception:
+        # Suggestions are a convenience for staff; the report is already saved.
+        db.rollback()
+        logging.getLogger(__name__).exception("Could not queue duplicate suggestions for report %s", report.id)
     return serialize_report(report, detail=True)
 
 
@@ -148,12 +162,19 @@ def list_reports(db: Session = Depends(get_db), user: User = Depends(get_current
     query = select(Report).order_by(Report.created_at.desc())
     if user.role == "resident":
         query = query.where(Report.resident_id == user.id)
-    return [serialize_report(report) for report in db.scalars(query)]
+        return [serialize_report(report) for report in db.scalars(query)]
+    reports = db.scalars(query).all()
+    # Staff only: a suggested priority with its reasons, never shown to residents.
+    scores = priority.for_reports(db, reports)
+    return [{**serialize_report(report), "priority": scores[report.id]} for report in reports]
 
 
 @router.get("/{report_id}")
 def report_detail(report_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return serialize_report(authorized_report(report_id, db, user), detail=True)
+    report = authorized_report(report_id, db, user)
+    if user.role == "resident":
+        return serialize_report(report, detail=True)
+    return {**serialize_report(report, detail=True), "priority": priority.for_reports(db, [report])[report.id]}
 
 
 @router.get("/{report_id}/image")
