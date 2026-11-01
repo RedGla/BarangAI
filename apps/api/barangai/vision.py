@@ -57,7 +57,10 @@ def instructions(language: str) -> str:
         "to true only when a problem is clearly visible. "
         f"Always choose the one closest category from: {', '.join(CATEGORIES)}, even when no problem is visible. "
         f"Write a factual description in {LANGUAGES.get(language, 'English')}, one or two short sentences, about what is "
-        "visible: the problem, its size and what it affects. Never identify or describe people's faces, names, plate "
+        "visible: the problem, its size and what it affects. Give size or depth only as a rough everyday estimate "
+        "that something visible supports, such as a tyre, curb, step, car or person (for example ankle-deep or "
+        "knee-deep water, a pothole about a tyre wide), say 'about', and leave it out when nothing gives a sense of "
+        "scale. Never give measurements in centimetres or metres. Never identify or describe people's faces, names, plate "
         "numbers, addresses, phone numbers or other personal details, and do not guess the location. "
         f"List any hazards that clearly apply from: {', '.join(HAZARDS)}. "
         'Reply with JSON only: {"category": "...", "problem_visible": true, "description": "...", "hazards": ["..."]}'

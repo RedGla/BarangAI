@@ -174,6 +174,12 @@ def test_vision_replies_are_validated(text, expected):
     assert (result and (result.category, result.description, result.hazards)) == expected
 
 
+def test_vision_prompt_asks_for_rough_scale_not_measurements():
+    prompt = vision.instructions("en")
+    assert "knee-deep" in prompt and "about" in prompt
+    assert "Never give measurements in centimetres or metres" in prompt
+
+
 def test_vision_request_shapes(monkeypatch):
     path, body = vision.request_body("@cf/mistralai/mistral-small-3.1-24b-instruct", b"img", "fil")
     assert path == "ai/run/@cf/mistralai/mistral-small-3.1-24b-instruct"
