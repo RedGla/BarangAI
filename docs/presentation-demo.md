@@ -7,7 +7,7 @@ The reviewed v3 model is experimental: both held-out fallen-tree photos were mis
 ## Before the presentation
 
 - Start the local AI presentation with `deploy/start-local.ps1` after following the README setup. Use `-Port 8001` if port 8000 is occupied. The launcher serves both the built website and API. Log in as the synthetic resident and separately as staff or administrator. Provision personnel through the existing operator command; do not put credentials in slides or source control.
-- Prepare a JPG/PNG/WebP photo under 5 MB, with no identifiable people, plate numbers, or private address details. Test it through **Choose photo** and verify filename and preview.
+- Prepare a JPG/PNG/WebP photo up to 25 MB (the app shrinks it before upload), with no identifiable people, plate numbers, or private address details. Test it through **Choose photo** and verify filename and preview.
 - On the actual phone, test **Take photo**, camera permission, and **Choose photo** from the gallery. Camera capture is a browser/device hint; desktop browsers may open a file chooser instead. HEIC is unsupported and displays conversion/format guidance.
 - For a phone demonstration use a reachable trusted HTTPS origin. A phone's localhost refers to the phone. Plain HTTP over the computer's LAN address does not provide a secure GPS context and production secure cookies will not work there. Retain manual coordinates/map pin as the location fallback. Do not disable production cookie security for a public demonstration.
 - Confirm map tiles/network, login, private photo access, and responsive layout on the actual presentation device. Keep a local desktop demonstration available if the network fails.

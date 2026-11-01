@@ -17,7 +17,7 @@ Local development: Vite proxies `/api` to FastAPI on port 8000. The selected Ren
 | POST | `/reports` | Resident | Multipart `image`, `latitude`, `longitude`, `resident_category`, optional `description` (trimmed, at most 1,000 characters). The server adds `model_category`, `hazards` and `location_label` itself. |
 | GET | `/reports` | Signed in | Own reports for residents; all for staff/admin. |
 | GET | `/reports/{id}` | Owner or staff/admin | Report with status events and staff actions. |
-| GET | `/reports/{id}/image` | Owner or staff/admin | Sanitized private JPEG. |
+| GET | `/reports/{id}/image` | Owner or staff/admin | Sanitized private JPEG: rotated upright, metadata removed, longest side at most 1,600 px, quality 80 (about 200–500 KB). The browser shrinks photos (up to 25 MB picked) to the same size before upload; the API still accepts at most `MAX_IMAGE_BYTES` (5 MB) and 20 megapixels. |
 | POST | `/reports/{id}/status` | Staff/admin | `{status,verified_category?,note?}` with exact transition graph. |
 | POST | `/reports/{id}/actions` | Staff/admin | `{kind:"action"|"coordination",note}`. |
 | GET | `/notifications` | Signed in | Latest 100 notifications belonging to the caller. |

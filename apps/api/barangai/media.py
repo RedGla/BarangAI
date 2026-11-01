@@ -113,6 +113,13 @@ def image_response(location):
     return FileResponse(location, media_type="image/jpeg", headers=headers)
 
 
+# Stored photos: longest side 1600 px, JPEG quality 80, no metadata. About 200-500 KB for a phone photo, so the
+# Supabase Free bucket (1 GB) holds a few thousand reports, while signs, wiring and potholes stay readable. The
+# browser shrinks to the same size first; this is the guarantee for any client that did not.
+PHOTO_LONGEST_SIDE = 1600
+PHOTO_QUALITY = 80
+
+
 def sanitize_image(data: bytes) -> bytes:
     if len(data) > int(os.environ.get("MAX_IMAGE_BYTES", 5_000_000)):
         raise HTTPException(413, "Image too large")
@@ -120,9 +127,21 @@ def sanitize_image(data: bytes) -> bytes:
         with Image.open(io.BytesIO(data)) as image:
             if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 20_000_000:
                 raise HTTPException(422, "Unsupported image")
+            # JPEGs can decode at 1/2, 1/4 or 1/8 scale, which saves memory on the small Render instance.
+            image.draft("RGB", (PHOTO_LONGEST_SIDE, PHOTO_LONGEST_SIDE))
             image.load()
+            picture = ImageOps.exif_transpose(image)
+            # Shrink first, so flattening and converting work on the small copy.
+            picture.thumbnail((PHOTO_LONGEST_SIDE, PHOTO_LONGEST_SIDE), Image.Resampling.LANCZOS, reducing_gap=3.0)
+            if picture.mode in {"RGBA", "LA", "P", "PA"}:
+                picture = picture.convert("RGBA")
+                flat = Image.new("RGB", picture.size, "white")
+                flat.paste(picture, mask=picture.getchannel("A"))
+                picture = flat
+            # Pixels only: Pillow would otherwise copy the original's JPEG comment, EXIF or ICC profile across.
+            picture = Image.frombytes("RGB", picture.size, picture.convert("RGB").tobytes())
             output = io.BytesIO()
-            ImageOps.exif_transpose(image).convert("RGB").save(output, format="JPEG", quality=85)
+            picture.save(output, format="JPEG", quality=PHOTO_QUALITY, optimize=True, progressive=True)
             return output.getvalue()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise HTTPException(422, "Invalid image") from None
