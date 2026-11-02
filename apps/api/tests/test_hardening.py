@@ -93,6 +93,20 @@ def test_client_address_trusts_only_configured_proxy_hops(monkeypatch, hops, for
     assert client_ip(request) == expected
 
 
+def test_password_guessing_from_elsewhere_does_not_lock_the_owner_out(client, monkeypatch):
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    register(client, "ana@example.test")
+    client.cookies.clear()
+    stranger = {"X-Forwarded-For": "198.51.100.66"}
+    for _ in range(10):
+        assert client.post("/auth/login", json={"email": "ana@example.test", "password": "wrong"},
+                           headers=stranger).status_code == 401
+    assert client.post("/auth/login", json={"email": "ana@example.test", "password": "wrong"},
+                       headers=stranger).status_code == 429
+    assert client.post("/auth/login", json={"email": "ana@example.test", "password": "correct horse battery staple"},
+                       headers={"X-Forwarded-For": "203.0.113.5"}).status_code == 200
+
+
 # Trust checks
 
 
@@ -145,6 +159,27 @@ def test_trust_flag_thresholds():
 
 
 # Shrinking and face blurring
+
+
+def test_jpeg_comments_and_other_carried_over_details_are_removed(client):
+    output = io.BytesIO()
+    Image.new("RGB", (8, 8), "red").save(output, format="JPEG", comment=b"Synthetic owner note 14.33,120.93", dpi=(300, 300))
+    register(client)
+    report_id = submit(client, output.getvalue()).json()["id"]
+    stored = client.get(f"/reports/{report_id}/image").content
+    assert b"Synthetic owner note" not in stored
+    with Image.open(io.BytesIO(stored)) as image:
+        assert "comment" not in image.info and not image.getexif()
+
+
+def test_broken_photo_details_never_fail_a_report(monkeypatch):
+    from barangai import trust
+
+    def broken(_data):
+        raise KeyError("synthetic malformed IFD")
+
+    monkeypatch.setattr(trust, "read_facts", broken)
+    assert trust.photo_facts(b"anything") == {}
 
 
 def test_large_photos_are_shrunk_to_the_long_edge_limit(client):
@@ -240,6 +275,15 @@ def test_resident_adds_details_to_their_open_report_and_staff_are_notified(clien
 def test_details_cannot_be_added_to_closed_reports_or_by_staff(client, photo):
     report_id = resident_report(client, photo, "ana@example.test")
     assert add(client, report_id, note="   ").status_code == 422
+    import os
+
+    os.environ["MAX_ADDENDA_PER_DAY"] = "1"
+    try:
+        assert add(client, report_id).status_code == 201
+        capped = add(client, report_id)
+        assert capped.status_code == 429 and capped.json()["detail"] == "Daily limit for added details reached"
+    finally:
+        del os.environ["MAX_ADDENDA_PER_DAY"]
     staff_login(client)
     assert add(client, report_id).status_code == 403
     walk(client, report_id, "Under Verification", "Rejected")
@@ -363,6 +407,9 @@ def test_brief_uses_the_model_only_when_every_number_is_real(client, photo, monk
     cloudflare_answer(monkeypatch, "There are 7 open reports and 3 are urgent.")
     brief = client.get("/staff/brief").json()
     assert brief["source"] == "template" and "7" not in brief["summary"]
+    module.clear_cache()
+    cloudflare_answer(monkeypatch, "Three reports need attention today.")
+    assert client.get("/staff/brief").json()["source"] == "template"  # spelled-out numbers are checked too
 
 
 def test_web_app_manifest_is_served_with_its_type(tmp_path, monkeypatch):

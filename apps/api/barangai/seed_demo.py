@@ -2,12 +2,14 @@ import argparse
 import io
 import os
 import random
+from datetime import datetime, timedelta
 from getpass import getpass
 
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.engine import make_url
 
+from . import trust
 from .auth import hasher
 from .db import database_url, session_for_url
 from .media import sanitize_image, save_image
@@ -31,11 +33,20 @@ def is_local():
     return make_url(database_url()).get_backend_name() == "sqlite"
 
 
-def photo(seed):
+def photo(seed, exif=None):
     color = random.Random(seed).choices(range(40, 220), k=3)
     output = io.BytesIO()
-    Image.new("RGB", (640, 480), tuple(color)).save(output, format="JPEG")
-    return sanitize_image(output.getvalue())
+    Image.new("RGB", (640, 480), tuple(color)).save(output, format="JPEG", **({"exif": exif} if exif else {}))
+    return output.getvalue() if exif else sanitize_image(output.getvalue())
+
+
+def camera_photo(seed, latitude, longitude, days_ago):
+    """A synthetic original carrying camera details, as a phone would upload it (before sanitizing)."""
+    exif = Image.Exif()
+    exif[271] = "SyntheticCam"
+    exif[0x8769] = {36867: (datetime.now(trust.MANILA) - timedelta(days=days_ago)).strftime("%Y:%m:%d %H:%M:%S")}
+    exif[0x8825] = {1: "N", 2: (latitude, 0.0, 0.0), 3: "E", 4: (longitude, 0.0, 0.0)}
+    return photo(seed, exif)
 
 
 def seed(password: str, count: int):
@@ -129,14 +140,17 @@ def pitch_story(db, staff, residents):
                   hazards=["electrical_hazard", "risk_to_people"], location_source="photo")
     moved = Report(resident_id=residents[1].id, resident_category="potholes", status="Pending", image_path="",
                    location_label="Demo Rizal Street", latitude=CENTER[0] + 0.004, longitude=CENTER[1] + 0.002,
-                   description="Synthetic demo: deep pothole in the middle lane.", location_source="manual",
-                   trust_flags=[{"code": "pin_far_from_photo", "detail": 420}, {"code": "old_photo", "detail": 30}])
+                   description="Synthetic demo: deep pothole in the middle lane.", location_source="manual")
+    # The pothole photo was "taken" a month ago, a few hundred metres from where its pin was dropped; the real
+    # checks (trust.py) find that from the photo itself.
+    original = camera_photo(201, round(moved.latitude - 0.004, 6), moved.longitude, days_ago=30)
+    moved.trust_flags = trust.flags(trust.photo_facts(original), moved.latitude, moved.longitude) or None
     for index, report in enumerate((wire, moved)):
         db.add(report)
         db.flush()
         db.add(ReportEvent(report_id=report.id, to_status="Pending", actor_id=report.resident_id))
         db.add(Notification(user_id=staff.id, report_id=report.id, status="Pending", kind="new_report"))
-        report.image_path = save_image(report.id, photo(200 + index))
+        report.image_path = save_image(report.id, sanitize_image(original) if report is moved else photo(200 + index))
 
 
 if __name__ == "__main__":

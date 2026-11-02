@@ -11,12 +11,12 @@ import math
 import os
 from datetime import UTC, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .auth import get_current_user, require_csrf, require_role
+from .auth import get_current_user, rate_limit, require_csrf, require_role
 from .db import get_db
 from .duplicates import candidate_score
 from .models import Case, DuplicateSuggestion, Notification, Report, ReportEvent, StaffAction, User, now, utc_iso
@@ -322,14 +322,16 @@ OWN_REPORT_DAYS = 30
 
 
 @router.get("/nearby")
-def nearby(category: str, latitude: float = Query(..., ge=-90, le=90), longitude: float = Query(..., ge=-180, le=180),
-           db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def nearby(request: Request, category: str, latitude: float = Query(..., ge=-90, le=90),
+           longitude: float = Query(..., ge=-180, le=180), db: Session = Depends(get_db),
+           user: User = Depends(get_current_user)):
     """Before submitting: the resident's own open reports of this issue, and neighbours' open accepted cases.
 
     Same or related category within the category's search radius. Only the resident's own reports and the already
     public map cases are returned, so nothing private about other residents is revealed.
     """
     require_role(user, {"resident"})
+    rate_limit(request, "nearby", 60, key=user.id)
     if category not in RADIUS_M:
         raise HTTPException(422, "Invalid location or category")
     wanted = {category} | RELATED.get(category, set())

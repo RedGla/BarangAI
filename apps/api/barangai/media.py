@@ -146,6 +146,8 @@ def sanitize_image(data: bytes) -> bytes:
     edge = int(os.environ.get("MAX_IMAGE_EDGE", 1600))
     upright.thumbnail((edge, edge), Image.Resampling.LANCZOS)
     upright, _ = privacy.blur_faces(upright)
+    # convert() copies the source's info (JPEG comments, DPI, ICC), and the JPEG writer would write some back.
+    upright.info.clear()
     output = io.BytesIO()
     upright.save(output, format="JPEG", quality=82, optimize=True)
     result = output.getvalue()

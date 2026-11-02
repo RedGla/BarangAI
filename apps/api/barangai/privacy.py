@@ -14,7 +14,7 @@ from functools import lru_cache
 from PIL import Image, ImageFilter
 
 log = logging.getLogger(__name__)
-DETECT_EDGE = 640  # faces are found on a small copy: about a quarter-second on one CPU thread
+DETECT_EDGE = 640  # faces are found on a small copy (one 640 px detection took ~0.25 s in a dev container)
 _lock = threading.Lock()
 
 

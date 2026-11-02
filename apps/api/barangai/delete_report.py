@@ -69,18 +69,20 @@ def delete_report(report_id, email, password, *, confirm=None, receipt_path=None
         if database.get_backend_name() == "sqlite" and database.database not in {None, ":memory:"}:
             if receipt_file == Path(database.database).resolve():
                 raise ValueError("Receipt must be separate from the database")
-        if not report.image_path.startswith("supabase:") and receipt_file == Path(report.image_path).resolve():
-            raise ValueError("Receipt must be separate from the report image")
+        for location in [report.image_path, *extra_images]:
+            if not location.startswith("supabase:") and receipt_file == Path(location).resolve():
+                raise ValueError("Receipt must be separate from the report image")
         # Open before changing data so an unusable operator path fails safely.
         descriptor = os.open(receipt_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as output:
             for model, condition in dependencies:
                 db.execute(delete(model).where(condition))
             db.execute(delete(Report).where(Report.id == report_id))
-            # SQL changes are still uncommitted if private storage rejects deletion.
-            delete_image(report.image_path)
+            # SQL changes are still uncommitted if private storage rejects deletion. Added photos go first, so a
+            # failure among them leaves the report's own photo and rows intact for a retry.
             for location in extra_images:
                 delete_image(location)
+            delete_image(report.image_path)
             db.commit()
             receipt = {"action": "report-deleted", "report_id": report_id,
                        "administrator_id": admin_id, "time": now().isoformat(), "reason": reason}

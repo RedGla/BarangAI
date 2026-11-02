@@ -146,8 +146,12 @@ def register(credentials: Credentials, request: Request, response: Response, db:
 
 @router.post("/login")
 def login(credentials: LoginCredentials, request: Request, response: Response, db: Session = Depends(get_db)):
-    # Per account against password guessing; a looser per-address cap against one machine trying many accounts.
-    rate_limit(request, "login", key=credentials.email.strip().lower()[:320])
+    # Password guessing is limited per account and address, so a stranger guessing elsewhere cannot lock the owner
+    # out; a looser per-account cap stops guessing spread over many addresses, and a per-address cap stops one
+    # machine trying many accounts. (On Render all callers share an address until TRUSTED_PROXY_HOPS is set.)
+    email = credentials.email.strip().lower()[:320]
+    rate_limit(request, "login", key=f"{email}|{client_ip(request)}")
+    rate_limit(request, "login_account", 50, key=email)
     rate_limit(request, "login_address", 60)
     user = db.scalar(select(User).where(User.email == credentials.email.lower()))
     try:

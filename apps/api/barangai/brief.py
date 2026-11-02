@@ -113,8 +113,25 @@ def template(data, language):
     return " ".join(lines)
 
 
+# Spelled-out counts are checked too, so "three reports" cannot slip past the digit check.
+NUMBER_WORDS = {
+    word: value
+    for value, words in enumerate([
+        ("zero", "wala"), ("one", "isa", "isang"), ("two", "dalawa", "dalawang"), ("three", "tatlo", "tatlong"),
+        ("four", "apat", "apat na"), ("five", "lima", "limang"), ("six", "anim", "anim na"), ("seven", "pito", "pitong"),
+        ("eight", "walo", "walong"), ("nine", "siyam", "siyam na"), ("ten", "sampu", "sampung"),
+        ("eleven", "labing-isa"), ("twelve", "labindalawa"), ("thirteen",), ("fourteen",), ("fifteen",),
+        ("sixteen",), ("seventeen",), ("eighteen",), ("nineteen",), ("twenty", "dalawampu"),
+    ])
+    for word in words
+}
+WORD_PATTERN = re.compile(r"\b(" + "|".join(sorted((re.escape(w) for w in NUMBER_WORDS), key=len, reverse=True))
+                          + r")\b", re.IGNORECASE)
+
+
 def numbers_in(text):
-    return {int(value) for value in re.findall(r"\d+", text)}
+    found = {int(value) for value in re.findall(r"\d+", text)}
+    return found | {NUMBER_WORDS[match.lower()] for match in WORD_PATTERN.findall(text)}
 
 
 def allowed_numbers(data):

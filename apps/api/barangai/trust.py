@@ -55,6 +55,13 @@ def gps_degrees(parts, ref):
 
 def photo_facts(data: bytes) -> dict:
     """Capture time, camera presence and GPS from the original upload; empty when it carries none."""
+    try:
+        return read_facts(data)
+    except Exception:
+        return {}  # odd or broken EXIF: the checks are hints, so they never fail a report
+
+
+def read_facts(data: bytes) -> dict:
     facts = {}
     try:
         with Image.open(io.BytesIO(data)) as image:

@@ -38,6 +38,11 @@ def upgrade():
 
 
 def downgrade():
+    if not op.get_context().as_sql:
+        photos = op.get_bind().execute(sa.text("SELECT COUNT(*) FROM report_addenda WHERE image_path IS NOT NULL"))
+        if photos.scalar():
+            # Dropping the table would orphan private photos the deletion command could no longer find.
+            raise RuntimeError("Delete the reports with added photos (barangai.delete_report) before downgrading")
     op.drop_index("ix_report_addenda_report_id", table_name="report_addenda")
     op.drop_table("report_addenda")
     # Staff notifications have no meaning without the kind column; residents' status updates are kept.

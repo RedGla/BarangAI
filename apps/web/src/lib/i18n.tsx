@@ -7,6 +7,8 @@ const LanguageContext = createContext<{ language: Language; setLanguage: (value:
 })
 
 const filipino: Record<string, string> = {
+  'Daily limit for added details reached':
+    'Naabot mo na ang bilang ng maidadagdag na detalye ngayong araw. Subukan ulit bukas.',
   'Photo is too large. Choose a photo of 25 MB or less.':
     'Masyadong malaki ang larawan. Pumili ng larawang hindi lalampas sa 25 MB.',
   'Another photo of the same problem.': 'Isa pang larawan ng parehong problema.',

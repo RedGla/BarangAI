@@ -93,12 +93,13 @@ def daily_limit(name, default):
         return default
 
 
-def within_daily_cap(db: Session, model, author_column, user_id: str, name: str, default: int):
+def within_daily_cap(db: Session, model, author_column, user_id: str, name: str, default: int,
+                     message="Daily report limit reached"):
     """Counted in the database, so a restart or a second device does not reset it."""
     since = now() - timedelta(days=1)
     sent = db.scalar(select(func.count()).select_from(model).where(author_column == user_id, model.created_at >= since))
     if sent >= daily_limit(name, default):
-        raise HTTPException(429, "Daily report limit reached")
+        raise HTTPException(429, message)
 
 
 @router.post("/predict")
@@ -244,7 +245,8 @@ def add_details(
     if not note or len(note) > 1000:
         raise HTTPException(422, "Add a note of up to 1000 characters")
     rate_limit(request, "addendum", key=user.id)
-    within_daily_cap(db, ReportAddendum, ReportAddendum.author_id, user.id, "MAX_ADDENDA_PER_DAY", 20)
+    within_daily_cap(db, ReportAddendum, ReportAddendum.author_id, user.id, "MAX_ADDENDA_PER_DAY", 20,
+                     "Daily limit for added details reached")
     sanitized = sanitized_upload(image) if image is not None and image.filename else None
     addendum = ReportAddendum(report_id=report.id, author_id=user.id, note=note)
     db.add(addendum)
