@@ -38,7 +38,7 @@ Old EfficientNet classifier evidence (frozen and unused since option C): [tree c
 
 Synthetic data only. Raw evidence files live under the ignored `artifacts/` folder; superseded logs are in Git history before this file's 26 October update.
 
-- **Local, 2 November:** 167 API and 45 web tests, the typecheck and the production build passed after the spam-limit, photo-check, added-details, brief, preference and installable-app changes. Local screenshots at 390 px (resident) and 1,440/1,024 px (staff, light and dark) taken and sent to the user; their approval is pending.
+- **Local, 2 November:** 167 API and 45 web tests, the typecheck and the production build passed after the spam-limit, photo-check, added-details, brief, preference and installable-app changes. Local screenshots at 390 px (resident) and 1,440/1,024 px (staff, light and dark) approved by the user on 2 November.
 - **Local, 29 October:** 123 API and 34 web tests, the typecheck and the production build passed after the bug-fix and cleanup pass.
 - **Local, 20 October:** 90 API, 18 web and 10 ML tests plus the production build passed. Real-browser smoke at 390×844 covered registration, gallery and camera-input uploads, the full staff status path, notifications, Filipino chat status and cross-resident photo denial (404).
 - **Docker PostgreSQL 16, 20 October** (`deploy/verify-local-postgres.py`): migrations 0003→0005 preserve a legacy row; RLS denies simulated `anon`/`authenticated` roles; JPEG/PNG/WebP uploads are rotated, EXIF-stripped and owner-only; data persists across a DB restart.
