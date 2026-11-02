@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { AnimatePresence, m } from 'motion/react'
 import {
   Camera,
@@ -14,6 +14,8 @@ import {
   Map as MapIcon,
   Sparkles,
   TriangleAlert,
+  Users,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,7 +30,7 @@ import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
 import { MapPicker } from './MapPicker'
 import { photoCoordinates, useStreetName, type LocationSource } from './location'
-import { useSubmitReport } from './queries'
+import { useCommunityCases, useSubmitReport } from './queries'
 import type { Category, Prediction, Report } from './types'
 
 const UNAVAILABLE: Prediction = { prediction_available: false, model_category: null, confidence: null }
@@ -80,6 +82,14 @@ export function ReportForm() {
   const [locationSource, setLocationSource] = useState<LocationSource>(null)
   const { language } = useLanguage()
   const streetName = useStreetName(latitude, longitude)
+  // "I see this too" from the community map: this report is offered to staff as evidence for that case.
+  const [params, setParams] = useSearchParams()
+  const caseId = params.get('case')
+  const community = useCommunityCases(Boolean(caseId))
+  const joining = caseId ? community.data?.find(item => item.id === caseId && item.open_for_evidence) : undefined
+  useEffect(() => {
+    if (joining) setCategory(current => current || joining.category)
+  }, [joining])
   // A field counts as the AI's only while it still holds the AI's text: a choice the resident made while the
   // photo was being checked is theirs, even though the AI's answer arrived afterwards.
   const aiCategory = aiFilled.category && category === prediction?.model_category
@@ -204,6 +214,7 @@ export function ReportForm() {
     form.set('latitude', latitude)
     form.set('longitude', longitude)
     if (description.trim()) form.set('description', description.trim())
+    if (joining) form.set('case_id', joining.id)
     submitReport.mutate(form, {
       onSuccess: report => {
         navigator.vibrate?.(25)
@@ -213,6 +224,7 @@ export function ReportForm() {
     })
   }
   function startOver() {
+    setParams({}, { replace: true })
     setSubmitted(null)
     setPhoto(null)
     setPreview('')
@@ -238,6 +250,30 @@ export function ReportForm() {
   return (
     <div className="lg:mx-auto lg:max-w-6xl">
       <LargeTitle title={t('Make a report')} trailing={<ResidentAccount />} />
+      {joining && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl bg-tint p-3.5">
+          <Users className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-[14.5px]">
+            <strong className="block font-semibold">
+              {t('Adding to')}: {t(label(joining.category))}
+            </strong>
+            <span className="text-muted-foreground">
+              {joining.location_label ? `${joining.location_label} · ` : ''}
+              <Txt>Your photo, pin and time become evidence for this issue once staff check it.</Txt>
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setParams({}, { replace: true })}
+            aria-label={t('Report a separate issue instead')}
+            className="group -m-2 grid size-11 shrink-0 place-items-center rounded-full"
+          >
+            <span className="grid size-7 place-items-center rounded-full bg-background/70 text-muted-foreground group-hover:text-foreground">
+              <X className="size-4" strokeWidth={2.5} />
+            </span>
+          </button>
+        </div>
+      )}
       {/* Desktop: the steps on the left, a live summary of the report on the right. */}
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:gap-10">
         <div>

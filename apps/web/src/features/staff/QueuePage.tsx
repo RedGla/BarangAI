@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { AnimatePresence, m } from 'motion/react'
-import { Search, X } from 'lucide-react'
+import { Layers, Link2, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { NativeSelect } from '@/components/ui/native-select'
 import { DateText } from '@/components/DateText'
@@ -11,7 +11,9 @@ import { Txt, useText } from '../../lib/i18n'
 import { categories, label, statuses } from '../reports/categories'
 import { CategoryTile } from '../reports/CategoryIcon'
 import { ReportHeading, ReportView } from '../reports/ReportDetail'
+import { groupCases } from '../reports/grouping'
 import { useReport, useReports } from '../reports/queries'
+import { PriorityChip } from '../reports/Priority'
 import { StatusBadge } from '../reports/StatusBadge'
 
 /** Review queue as a split view; filters live in the URL so a reviewed report returns to the same list. */
@@ -24,10 +26,14 @@ export function QueuePage() {
   const status = params.get('status') ?? ''
   const category = params.get('category') ?? ''
   const query = params.get('q') ?? ''
+  // Newest first unless staff choose to sort by the suggested priority.
+  const sort = params.get('sort') ?? ''
   const all = reports.data
+  // A grouped case is one row (its first report); its other reports open from the case panel.
+  const grouped = useMemo(() => groupCases(all ?? []), [all])
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return (all ?? []).filter(
+    const rows = grouped.rows.filter(
       report =>
         (!status || report.status === status) &&
         (!category || report.resident_category === category) &&
@@ -36,7 +42,8 @@ export function QueuePage() {
           (report.description ?? '').toLowerCase().includes(needle) ||
           t(label(report.resident_category)).toLowerCase().includes(needle)),
     )
-  }, [all, status, category, query, t])
+    return sort === 'priority' ? [...rows].sort((a, b) => (b.priority?.score ?? -1) - (a.priority?.score ?? -1)) : rows
+  }, [grouped, status, category, query, sort, t])
   const search = params.toString() ? `?${params}` : ''
   function setFilter(name: string, value: string) {
     const next = new URLSearchParams(params)
@@ -97,9 +104,23 @@ export function QueuePage() {
               </NativeSelect>
             </label>
           </div>
-          <p className="px-0.5 text-[12.5px] text-muted-foreground" aria-live="polite">
-            {visible.length} {t('of')} {all?.length ?? 0} {t('reports')}
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="px-0.5 text-[12.5px] text-muted-foreground" aria-live="polite">
+              {visible.length} {t('of')} {grouped.rows.length} {t('reports')}
+            </p>
+            <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+              <Txt>Sort</Txt>
+              <NativeSelect
+                aria-label={t('Sort reports')}
+                value={sort}
+                onChange={event => setFilter('sort', event.target.value)}
+                className="h-8 w-auto text-[12.5px]"
+              >
+                <option value="">{t('Newest')}</option>
+                <option value="priority">{t('Suggested priority')}</option>
+              </NativeSelect>
+            </label>
+          </div>
         </div>
         {reports.error && (
           <p role="alert" className="p-3 text-[14px] text-destructive">
@@ -136,7 +157,22 @@ export function QueuePage() {
                   <span className="mt-0.5 line-clamp-1 text-[13.5px] text-muted-foreground">
                     {report.description || `#${report.id.slice(0, 8).toUpperCase()}`}
                   </span>
-                  <StatusBadge status={report.status} className="mt-1.5" />
+                  <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <StatusBadge status={report.status} />
+                    {report.priority && report.priority.level !== 'low' && <PriorityChip priority={report.priority} />}
+                    {grouped.sizeOf(report) > 1 && (
+                      <span className="inline-flex h-6 items-center gap-1 rounded-full bg-tint px-2 text-[12.5px] font-semibold text-primary">
+                        <Layers className="size-3.5" aria-hidden="true" />
+                        {grouped.sizeOf(report)} {t('reports')}
+                      </span>
+                    )}
+                    {report.case_id && !report.case_confirmed && (
+                      <span className="inline-flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-[12.5px] font-semibold text-muted-foreground">
+                        <Link2 className="size-3.5" aria-hidden="true" />
+                        <Txt>Added to a case · check</Txt>
+                      </span>
+                    )}
+                  </span>
                 </span>
               </Link>
             </li>

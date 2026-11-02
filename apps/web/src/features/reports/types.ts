@@ -33,6 +33,10 @@ export type Report = {
   longitude?: number
   location_label?: string | null
   hazards?: Hazard[]
+  case_id?: string | null
+  case_confirmed?: boolean
+  /** Staff only; null once closed. */
+  priority?: Priority | null
   created_at?: string
   events?: ReportEvent[]
   actions?: StaffAction[]
@@ -48,4 +52,46 @@ export type Prediction = {
   // false when the vision model looked and saw nothing wrong
   problem_seen?: boolean
   hazards?: Hazard[]
+}
+export type PriorityReason =
+  | { code: 'category'; detail: Category; points: number }
+  | { code: 'hazard'; detail: Hazard; points: number }
+  | { code: 'residents'; detail: number; points: number }
+  | { code: 'recent'; detail: number; points: number }
+/** A suggestion for staff from severity, recency and independent residents; it never reorders anything itself. */
+export type Priority = { level: 'high' | 'medium' | 'low'; score: number; reasons: PriorityReason[] }
+export type CaseMember = {
+  id: string
+  status: Status
+  resident_category: Category
+  created_at: string
+  confirmed: boolean
+}
+/** A grouped case as one report sees it; staff also get its reports. */
+export type ReportCase = {
+  id: string
+  category: Category
+  location_label?: string | null
+  status: Status | null
+  confirmed: boolean
+  /** Hidden from residents until staff accept the case. */
+  reports: number | null
+  contributors: number | null
+  members?: CaseMember[]
+}
+/** An accepted case on the residents' shared map: no photos, descriptions or names. */
+export type CommunityCase = {
+  id: string
+  category: Category
+  status: Status
+  latitude: number
+  longitude: number
+  location_label?: string | null
+  /** Days only (YYYY-MM-DD, Philippine time). */
+  first_reported_on: string
+  last_reported_on: string
+  contributors: number
+  hazards: Hazard[]
+  open_for_evidence: boolean
+  contributed: boolean
 }

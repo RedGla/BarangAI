@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -58,6 +58,18 @@ class OAuthIdentity(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
 
 
+class Case(Base):
+    """One incident reported by one or more residents. Its status is the shared status of its confirmed reports."""
+    __tablename__ = "cases"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    location_label: Mapped[str | None] = mapped_column(String(200))
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+
+
 class Report(Base):
     __tablename__ = "reports"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -76,6 +88,9 @@ class Report(Base):
     location_label: Mapped[str | None] = mapped_column(String(200))
     # Safety flags from the vision model's own analysis of the photo, never from the client.
     hazards: Mapped[list[str] | None] = mapped_column(JSON)
+    # Grouped case (cases.py). Unconfirmed means a resident said "I see this too" and staff have not checked it.
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id", name="fk_reports_case_id"), index=True)
+    case_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     events: Mapped[list["ReportEvent"]] = relationship(order_by="ReportEvent.created_at", cascade="all, delete-orphan")

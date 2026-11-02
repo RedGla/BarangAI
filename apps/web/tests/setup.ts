@@ -9,6 +9,12 @@ configure({ asyncUtilTimeout: 10_000 })
 MotionGlobalConfig.skipAnimations = true
 window.scrollTo = () => {}
 
+// Node 25+ ships its own localStorage (undefined without --localstorage-file), which hides jsdom's.
+if (!globalThis.localStorage) {
+  const { jsdom } = globalThis as unknown as { jsdom: { window: Window } }
+  Object.defineProperty(globalThis, 'localStorage', { value: jsdom.window.localStorage, configurable: true })
+}
+
 // jsdom lacks these browser APIs; the sidebar, sheets and charts read them. Desktop width by default.
 window.matchMedia ??= (query: string) =>
   ({

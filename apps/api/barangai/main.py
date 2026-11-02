@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .auth import attempts
 from .auth import router as auth_router
 from .body_limit import ReportBodyLimitMiddleware
+from .cases import router as cases_router
 from .chat import router as chat_router
 from .checker import validate_configured_checker
 from .db import database_url, upgrade_sqlite
@@ -34,6 +35,7 @@ def create_app():
     app.include_router(workflow_router)
     app.include_router(chat_router)
     app.include_router(duplicates_router)
+    app.include_router(cases_router)
     app.include_router(notifications_router)
     app.include_router(geo_router)
     app.add_middleware(ReportBodyLimitMiddleware)

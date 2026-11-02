@@ -350,6 +350,70 @@ const filipino: Record<string, string> = {
     'Hindi makikita sa larawan kung gumagana ang ilaw. Piliin lamang ito kung patay ito sa gabi o halatang sira.',
   'Nothing looks broken. We picked the closest category; please verify it and the description.':
     'Mukhang walang sira. Pinili namin ang pinakamalapit na kategorya; pakisuri ito at ang paglalarawan.',
+  // Grouped cases and the community map
+  'Case not found': 'Hindi makita ang isyung ito.',
+  'This issue is already resolved': 'Nalutas na ang isyung ito.',
+  'Confirm or reject the case link first': 'Kumpirmahin o tanggihan muna ang pag-ugnay sa kaso.',
+  'Rejected reports cannot be grouped': 'Hindi maaaring pagsamahin ang mga tinanggihang ulat.',
+  'Choose two different reports': 'Pumili ng dalawang magkaibang ulat.',
+  'No case link to decide': 'Walang pag-ugnay sa kaso na pagpapasiyahan.',
+  'Added to a case · check': 'Idinagdag sa kaso · suriin',
+  'Group into one case': 'Pagsamahin sa iisang kaso',
+  'In this case': 'Kasama sa kasong ito',
+  'resident reported this': 'residente ang nag-ulat nito',
+  'residents reported this': 'residente ang nag-ulat nito',
+  'The barangay handles these reports together as one case.':
+    'Sabay na inaasikaso ng barangay ang mga ulat na ito bilang iisang kaso.',
+  'You added this to a reported issue. Barangay staff will check that it is the same one.':
+    'Idinagdag mo ito sa isang naiulat nang isyu. Susuriin ng kawani ng barangay kung iisa nga ang mga ito.',
+  'Grouped case': 'Pinagsamang kaso',
+  'High priority': 'Mataas na prayoridad',
+  'Medium priority': 'Katamtamang prayoridad',
+  'Low priority': 'Mababang prayoridad',
+  'Suggested priority': 'Mungkahing prayoridad',
+  'residents reported it': 'residente ang nag-ulat nito',
+  'Reported today': 'Iniulat ngayong araw',
+  'Last report': 'Huling ulat',
+  'days ago': 'araw na ang nakalipas',
+  'A suggestion from severity, recency and independent residents. Staff decide the order.':
+    'Mungkahi batay sa tindi, kung gaano kabago, at bilang ng magkakaibang residente. Ang kawani ang magpapasiya ng pagkakasunod.',
+  Sort: 'Ayusin',
+  Category: 'Kategorya',
+  'Sort reports': 'Ayusin ang mga ulat',
+  Newest: 'Pinakabago',
+  'Staff have grouped your report with others about the same issue.':
+    'Isinama ng kawani ang iyong ulat sa iba pang ulat tungkol sa parehong isyu.',
+  residents: 'residente',
+  'Status changes here apply to every report in the case.':
+    'Ang pagbabago ng estado rito ay para sa lahat ng ulat sa kaso.',
+  'The resident says this is the same issue. Check before changing its status.':
+    'Sabi ng residente, iisa ang isyung ito. Suriin bago baguhin ang estado nito.',
+  'Same issue · add to case': 'Iisang isyu · idagdag sa kaso',
+  'Different issue': 'Ibang isyu',
+  'To check': 'Susuriin',
+  'Adding to': 'Idinadagdag sa',
+  'Your photo, pin and time become evidence for this issue once staff check it.':
+    'Magiging patunay para sa isyung ito ang iyong larawan, lokasyon at oras kapag nasuri na ng kawani.',
+  'Report a separate issue instead': 'Mag-ulat na lang ng hiwalay na isyu',
+  'Community map': 'Mapa ng komunidad',
+  'Issues your barangay has accepted, and how many residents reported each.':
+    'Mga isyung tinanggap ng barangay, at kung ilang residente ang nag-ulat ng bawat isa.',
+  'Show issues': 'Ipakita ang mga isyu',
+  'Being fixed': 'Inaayos',
+  'No open issues on the map': 'Walang bukas na isyu sa mapa',
+  'No resolved issues yet': 'Wala pang nalutas na isyu',
+  'Accepted reports appear here once barangay staff have checked them.':
+    'Lalabas dito ang mga tinanggap na ulat kapag nasuri na ng kawani ng barangay.',
+  'Photos, descriptions and names are never shown here. Pins are approximate.':
+    'Hindi kailanman ipinapakita rito ang mga larawan, paglalarawan at pangalan. Tinatayang lokasyon lamang ang mga pin.',
+  'Selected issue': 'Napiling isyu',
+  Residents: 'Mga residente',
+  'First reported': 'Unang iniulat',
+  'Latest report': 'Pinakabagong ulat',
+  'You reported this issue.': 'Iniulat mo ang isyung ito.',
+  'I see this too': 'Nakikita ko rin ito',
+  'See what neighbours reported. Seen it too? Add your photo.':
+    'Tingnan ang iniulat ng mga kapitbahay. Nakita mo rin? Idagdag ang iyong larawan.',
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
