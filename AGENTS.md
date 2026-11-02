@@ -9,7 +9,7 @@
 - Store private photographs outside public web roots. Strip metadata before storage.
 - Use synthetic people and incidents in demos and tests. Never invent model metrics or user-study results.
 - Keep external services optional in local tests. No paid API use or automatic billing.
-- Do not commit, push, or deploy without the user's direct request or existing authorization in this chat.
+- Do not commit, push, or deploy without the user's direct request or existing authorization in this chat. Commits are authored as the team member; commit messages, branch names and pull requests never name the tools used to write the code (no co-author or session lines).
 
 ## Decisions (26 Oct 2026)
 
