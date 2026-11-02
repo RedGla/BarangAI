@@ -129,7 +129,9 @@ describe('resident reporting', () => {
       )
       render(<App />)
       fireEvent.change(await screen.findByLabelText(picker), { target: { files: [photoFile()] } })
-      expect(screen.getByLabelText(/incident photo/i)).not.toBeRequired()
+      expect(screen.getByRole('status')).toHaveTextContent('Preparing photo…')
+      await waitFor(() => expect(screen.getByLabelText(/incident photo/i)).not.toBeRequired())
+      expect(screen.queryByText('Preparing photo…')).not.toBeInTheDocument()
       next()
       await fillLocation()
       next()
@@ -161,6 +163,7 @@ describe('resident reporting', () => {
     )
     render(<App />)
     fireEvent.change(await screen.findByLabelText(/incident photo/i), { target: { files: [photoFile()] } })
+    await waitFor(() => expect(screen.getByRole('button', { name: /^next/i })).toBeEnabled())
     next()
     await fillLocation()
     next()
@@ -170,7 +173,7 @@ describe('resident reporting', () => {
 
   it.each([
     ['phone.heic', 'image/heic', 4, 'HEIC photos are not supported. Choose JPG, PNG, or WebP, or take a new photo.'],
-    ['large.jpg', 'image/jpeg', 5_000_001, 'Photo is too large. Choose a photo of 5 MB or less.'],
+    ['large.jpg', 'image/jpeg', 25_000_001, 'Photo is too large. Choose a photo of 25 MB or less.'],
   ])('rejects %s before prediction or submission', async (name, type, bytes, message) => {
     const calls: string[] = []
     vi.stubGlobal(

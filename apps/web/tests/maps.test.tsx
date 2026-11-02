@@ -74,6 +74,7 @@ it('opens and closes a resident map without leaving animated transitions', async
   fireEvent.change(await screen.findByLabelText(/incident photo/i), {
     target: { files: [new File(['x'], 'road.jpg', { type: 'image/jpeg' })] },
   })
+  await waitFor(() => expect(screen.getByRole('button', { name: /^next/i })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: /^next/i }))
   fireEvent.click(await screen.findByRole('button', { name: 'Adjust pin on map' }))
   await waitFor(() => expect(maps.instances.length).toBe(1))

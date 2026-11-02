@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { AnimatePresence, m } from 'motion/react'
 import {
@@ -30,6 +30,7 @@ import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
 import { MapPicker } from './MapPicker'
 import { photoCoordinates, useStreetName, type LocationSource } from './location'
+import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES } from './photo'
 import { useCommunityCases, useSubmitReport } from './queries'
 import type { Category, Prediction, Report } from './types'
 
@@ -47,7 +48,7 @@ function photoProblem(file: File) {
     ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
     (!file.type && /\.(jpe?g|png|webp)$/i.test(file.name))
   if (!supported) return 'Choose a JPG, PNG, or WebP photo.'
-  if (file.size > 5_000_000) return 'Photo is too large. Choose a photo of 5 MB or less.'
+  if (file.size > MAX_PICK_BYTES) return 'Photo is too large. Choose a photo of 25 MB or less.'
   return ''
 }
 
@@ -80,6 +81,9 @@ export function ReportForm() {
   // Which fields the AI filled from the photo; editing a field hands it back to the resident.
   const [aiFilled, setAiFilled] = useState(NOT_FILLED)
   const [locationSource, setLocationSource] = useState<LocationSource>(null)
+  // The latest photo pick; a slower shrink of an earlier pick must not replace it.
+  const pickId = useRef(0)
+  const [preparing, setPreparing] = useState(false)
   const { language } = useLanguage()
   const streetName = useStreetName(latitude, longitude)
   // "I see this too" from the community map: this report is offered to staff as evidence for that case.
@@ -150,13 +154,26 @@ export function ReportForm() {
     setPrediction(null)
     setError('')
     const problem = photoProblem(file)
+    const pick = ++pickId.current
     if (problem) {
+      setPreparing(false)
       setError(problem)
       return
     }
-    setPhoto(file)
+    setPreparing(true)
+    // Shrink before upload to save data and storage; GPS is read from the original below, before it is lost.
+    void compressPhoto(file).then(small => {
+      if (pick !== pickId.current) return
+      setPreparing(false)
+      if (small.size > MAX_UPLOAD_BYTES) {
+        setError('This device could not shrink the photo. Choose a photo of 5 MB or less.')
+        return
+      }
+      setPhoto(small)
+    })
     // Location without typing: the photo's own GPS first, then the phone's, quietly (the pin can still move).
     void photoCoordinates(file).then(coordinates => {
+      if (pick !== pickId.current) return
       if (coordinates) {
         setLatitude(String(coordinates[0]))
         setLongitude(String(coordinates[1]))
@@ -317,6 +334,7 @@ export function ReportForm() {
               {step === 0 && (
                 <PhotoStep
                   photo={photo}
+                  preparing={preparing}
                   preview={preview}
                   prediction={prediction}
                   onSelect={selectPhoto}
@@ -734,12 +752,14 @@ function AiTag({ check = false }: { check?: boolean }) {
 
 function PhotoStep({
   photo,
+  preparing,
   preview,
   prediction,
   onSelect,
   onDrop,
 }: {
   photo: File | null
+  preparing: boolean
   preview: string
   prediction: Prediction | null
   onSelect: (event: ChangeEvent<HTMLInputElement>) => void
@@ -763,6 +783,12 @@ function PhotoStep({
           src={preview}
           alt={t('Preview of incident photo')}
         />
+      )}
+      {preparing && (
+        <p className="flex items-center gap-2 px-1 text-[14px] text-muted-foreground" role="status">
+          <LoaderCircle className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <Txt>Preparing photo…</Txt>
+        </p>
       )}
       {photo && (
         <p className="flex items-center gap-2 px-1 text-[14px] text-muted-foreground" role="status">
@@ -821,7 +847,7 @@ function PhotoStep({
         </label>
       </div>
       <p className="px-1 text-[13px] text-muted-foreground">
-        <Txt>JPG, PNG, or WebP, up to 5 MB. Avoid faces and license plates.</Txt>
+        <Txt>JPG, PNG, or WebP, up to 25 MB. Avoid faces and license plates.</Txt>
       </p>
       {photo && <AiCard prediction={prediction} />}
     </>

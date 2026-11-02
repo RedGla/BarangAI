@@ -58,13 +58,16 @@ const filipino: Record<string, string> = {
   'Take photo': 'Kumuha ng larawan',
   'Incident photo · Choose photo': 'Larawan ng insidente · Pumili ng larawan',
   'Selected photo:': 'Napiling larawan:',
-  'JPG, PNG, or WebP, up to 5 MB. Avoid faces and license plates.':
-    'JPG, PNG, o WebP, hanggang 5 MB. Iwasan ang mukha at plaka ng sasakyan.',
+  'Preparing photo…': 'Inihahanda ang larawan…',
+  'JPG, PNG, or WebP, up to 25 MB. Avoid faces and license plates.':
+    'JPG, PNG, o WebP, hanggang 25 MB. Iwasan ang mukha at plaka ng sasakyan.',
   'HEIC photos are not supported. Choose JPG, PNG, or WebP, or take a new photo.':
     'Hindi suportado ang HEIC. Pumili ng JPG, PNG, o WebP, o kumuha ng bagong larawan.',
   'Choose a JPG, PNG, or WebP photo.': 'Pumili ng larawang JPG, PNG, o WebP.',
-  'Photo is too large. Choose a photo of 5 MB or less.':
-    'Masyadong malaki ang larawan. Pumili ng larawang hindi lalampas sa 5 MB.',
+  'Photo is too large. Choose a photo of 25 MB or less.':
+    'Masyadong malaki ang larawan. Pumili ng larawang hindi lalampas sa 25 MB.',
+  'This device could not shrink the photo. Choose a photo of 5 MB or less.':
+    'Hindi mapaliit ng device na ito ang larawan. Pumili ng larawang hindi lalampas sa 5 MB.',
 
   'Share what you see, pin where it happened, and follow every report from submission to resolution.':
     'Ibahagi ang nakita mo, ituro ang lokasyon, at subaybayan ang ulat hanggang malutas.',
