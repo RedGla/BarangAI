@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import ai, geo, priority, trust
+from . import ai, barangays, geo, priority, trust
 from .auth import get_current_user, rate_limit, require_csrf, require_role
 from .db import get_db
 from .media import delete_image, image_response, sanitize_image, save_image
@@ -45,6 +45,7 @@ def serialize_report(report, detail=False, staff=False):
     if staff:
         # Signals for staff to look closer; residents never see them (trust.py).
         result["trust_flags"] = report.trust_flags or []
+        result["barangay"] = report.barangay.name if report.barangay_id else None
     if detail:
         result["addenda"] = [serialize_addendum(report, item) for item in report.addenda]
         result["events"] = [
@@ -73,7 +74,7 @@ def serialize_report(report, detail=False, staff=False):
 
 def authorized_report(report_id: str, db: Session, user: User):
     report = db.get(Report, report_id)
-    if not report or (user.role == "resident" and report.resident_id != user.id):
+    if not report or (user.role == "resident" and report.resident_id != user.id) or not barangays.may_see(db, user, report):
         raise HTTPException(404, "Report not found")
     return report
 
@@ -158,6 +159,10 @@ def submit_report(
              **trust.photo_facts(raw)}
     # The model's category, hazards, embedding and street name come from the server, never the client.
     analysis = ai.for_submission(sanitized)
+    barangay_id = barangays.barangay_id_for(db, latitude, longitude)
+    # A case stays in one barangay. Across a border the report stands alone, and its own barangay's staff review it.
+    if case and cases.barangay_of(db, case) != barangay_id:
+        case = None
     report = Report(
         resident_id=user.id,
         latitude=latitude,
@@ -174,6 +179,7 @@ def submit_report(
         case_id=case.id if case else None,
         location_source=location_source if location_source in trust.SOURCES else None,
         trust_flags=trust.flags(facts, latitude, longitude) or None,
+        barangay_id=barangay_id,
     )
     db.add(report)
     db.flush()
@@ -208,7 +214,7 @@ def list_reports(db: Session = Depends(get_db), user: User = Depends(get_current
     if user.role == "resident":
         query = query.where(Report.resident_id == user.id)
         return [serialize_report(report) for report in db.scalars(query)]
-    reports = db.scalars(query).all()
+    reports = db.scalars(query.where(barangays.report_filter(db, user))).all()
     # Staff only: a suggested priority with its reasons, never shown to residents.
     scores = priority.for_reports(db, reports)
     return [{**serialize_report(report, staff=True), "priority": scores[report.id]} for report in reports]

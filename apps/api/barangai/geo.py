@@ -59,7 +59,7 @@ def lookup(lat: float, lng: float) -> str | None:
     if wait > 0:
         time.sleep(wait)
     contact = os.environ.get("GEOCODER_CONTACT", "")
-    agent = f"BarangAI academic prototype ({contact})" if contact else "BarangAI academic prototype"
+    agent = f"BarangAI hackathon prototype ({contact})" if contact else "BarangAI hackathon prototype"
     try:
         response = httpx.get(
             "https://nominatim.openstreetmap.org/reverse",

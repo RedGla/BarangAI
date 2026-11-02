@@ -7,7 +7,7 @@ no text encoder at runtime. Run from the repo root with the project venv (needs 
     .venv/Scripts/python.exe apps/api/tools/export_checker.py --prompts-only  # prompts only
 
 Weights: timm/MobileCLIP2-S0-OpenCLIP on Hugging Face, Apple ML research licence (apple-amlr): research use
-only, which covers this academic prototype. Change PROMPTS below and re-run to retune the checker.
+only; whether that covers the hackathon is not confirmed. Change PROMPTS below and re-run to retune the checker.
 """
 
 import hashlib

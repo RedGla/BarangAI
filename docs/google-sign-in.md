@@ -24,7 +24,7 @@ The maintained `google-auth` library verifies Google's signature, issuer, audien
 
 A new Google subject creates a **resident** account. Existing Google identities map by provider and subject, not email. A matching local password-account email is **never automatically linked**; sign in using that account's password. This build does not provide account linking or Google password recovery. Google sign-in cannot access an identity linked to a staff or administrator account. Keep staff and administrator password sign-in for the demonstration.
 
-Pending authorization transactions are bounded in process memory for this single-worker academic deployment. A process restart cancels an unfinished login safely; start again. Run one API worker. Multiple workers or instances require a shared short-lived transaction store before enabling this flow; a resident's completed app session itself stays in PostgreSQL.
+Pending authorization transactions are bounded in process memory for this single-worker hackathon deployment. A process restart cancels an unfinished login safely; start again. Run one API worker. Multiple workers or instances require a shared short-lived transaction store before enabling this flow; a resident's completed app session itself stays in PostgreSQL.
 
 ## Callback messages
 

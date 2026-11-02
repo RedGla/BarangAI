@@ -31,3 +31,31 @@ Face blurring needs `opencv-python-headless` 4.13 (in `deploy/requirements-rende
 Images are sanitized before upload. The backend rejects a public bucket and authorizes every image response. Supabase secrets never enter the browser. Review [deletion and backup handling](data-deletion.md), approve a retention policy before using real resident data, and back up Storage objects separately from database backups. Image storage and database writes are not an atomic cross-service transaction; failed cleanup logs a report identifier for operator reconciliation.
 
 Local images are not copied automatically to Supabase; migrate and verify any existing real data before changing storage settings.
+
+## Staff jurisdiction
+
+Staff are limited to one barangay once the first barangay is loaded. Until then all staff see all reports. The load needs an administrator account, because only administrators see reports outside every boundary. Work from a trusted terminal connected to the database, inside `apps/api`, and preview first:
+
+```bash
+python -m barangai.barangays boundaries.geojson --dry-run
+```
+
+```bash
+python -m barangai.barangays boundaries.geojson
+```
+
+```bash
+python -m barangai.bootstrap_staff staff@example.test --barangay "Barangay name"
+```
+
+```bash
+python -m barangai.bootstrap_staff staff@example.test --barangay "Other barangay" --assign
+```
+
+The file is a GeoJSON Feature or FeatureCollection of Polygons or MultiPolygons, each with a `name` in `properties`. Loading a name that already exists replaces its boundary. Reports with no barangay are placed at that point; a load never moves reports that already have one.
+
+**Assign existing staff straight after the first load:** until they have a barangay, they see no reports. Credit OpenStreetMap contributors (ODbL) if the boundaries come from there.
+
+There is no undo command yet. A wrong load needs a reviewed database change that clears `barangay_id` on `reports` and `users` and then empties `barangays`. Downgrading past migration `0009`, or rolling back to an image older than it, turns enforcement off, and all staff see all reports again.
+
+`seed_demo` doesn't assign barangays. After a load, seeded staff see nothing until assigned, and reports seeded after it have no barangay until the import runs again.

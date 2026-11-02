@@ -32,6 +32,16 @@ def uid():
     return str(uuid4())
 
 
+class Barangay(Base):
+    """A jurisdiction: staff belong to one, and reports are placed in one by their pin (barangays.py)."""
+    __tablename__ = "barangays"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    # GeoJSON Polygon or MultiPolygon, checked before it is saved.
+    boundary: Mapped[dict] = mapped_column(JSON, nullable=False, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -40,6 +50,9 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="resident")
     # Appearance and language, so they follow the account to another device. Only known keys are stored.
     preferences: Mapped[dict | None] = mapped_column(JSON)
+    # Staff only: the barangay whose reports they handle.
+    barangay_id: Mapped[str | None] = mapped_column(ForeignKey("barangays.id", name="fk_users_barangay_id"))
+    barangay: Mapped[Barangay | None] = relationship()
 
 
 class LoginSession(Base):
@@ -97,6 +110,9 @@ class Report(Base):
     location_source: Mapped[str | None] = mapped_column(String(10))
     # Staff-only checks of the photo against the pin and the date (trust.py). Signals to look closer, never proof.
     trust_flags: Mapped[list[dict] | None] = mapped_column(JSON)
+    # Set by the server from the pin. Empty when the pin is outside every barangay: then only administrators see it.
+    barangay_id: Mapped[str | None] = mapped_column(ForeignKey("barangays.id", name="fk_reports_barangay_id"), index=True)
+    barangay: Mapped[Barangay | None] = relationship()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     events: Mapped[list["ReportEvent"]] = relationship(order_by="ReportEvent.created_at", cascade="all, delete-orphan")

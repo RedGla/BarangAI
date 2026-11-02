@@ -16,10 +16,10 @@ from datetime import UTC, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
-from . import priority
+from . import barangays, priority
 from .auth import get_current_user, require_role
 from .chat import MODEL
 from .db import get_db
@@ -46,11 +46,11 @@ def aware(value):
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
-def facts(db: Session):
+def facts(db: Session, visible=true()):
     """Numbers staff can check against the queue themselves."""
     current = now()
     day_ago = current - timedelta(days=1)
-    reports = db.scalars(select(Report)).all()
+    reports = db.scalars(select(Report).where(visible)).all()
     open_reports = [report for report in reports if report.status in OPEN]
     scores = priority.for_reports(db, open_reports)
     high, seen_cases = [], set()
@@ -67,7 +67,8 @@ def facts(db: Session):
     places = Counter(report.location_label for report in open_reports if report.location_label)
     hotspot = next(((place, count) for place, count in places.most_common(1) if count >= 2), None)
     resolved = db.scalars(select(ReportEvent.report_id).where(
-        ReportEvent.to_status == "Resolved", ReportEvent.created_at >= day_ago)).all()
+        ReportEvent.to_status == "Resolved", ReportEvent.created_at >= day_ago,
+        ReportEvent.report_id.in_(select(Report.id).where(visible)))).all()
     return {
         "open": len(open_reports),
         "waiting": sum(report.status in ("Pending", "Under Verification") for report in open_reports),
@@ -190,7 +191,7 @@ def clear_cache():
 def daily_brief(language: str = Query("en"), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     require_role(user, {"staff", "administrator"})
     language = language if language in LANGUAGES else "en"
-    data = facts(db)
+    data = facts(db, barangays.report_filter(db, user))
     text = written(data, language)
     return {"summary": text or template(data, language), "source": "workers_ai" if text else "template",
             "facts": data, "generated_at": now().isoformat()}

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from . import barangays
 from .auth import get_current_user, rate_limit, require_csrf, require_role
 from .db import get_db
 from .duplicates import candidate_score
@@ -58,6 +59,8 @@ def suggest_duplicates(db: Session, report: Report):
     lon_span = radius / (111_320 * max(math.cos(math.radians(report.latitude)), 0.01))
     nearby = db.scalars(select(Report).where(
         Report.id != report.id, Report.embedding_model_version == version,
+        # Same barangay only, since grouped reports share one status. Before barangays are loaded, all ids are empty.
+        Report.barangay_id == report.barangay_id,
         Report.status.not_in(("Resolved", "Rejected")),
         Report.latitude.between(report.latitude - lat_span, report.latitude + lat_span),
         Report.longitude.between(report.longitude - lon_span, report.longitude + lon_span)))
@@ -113,6 +116,11 @@ def members(db: Session, case_id: str, confirmed_only=True, lock=False):
         # Two staff moving two reports of one case at once must not both walk the rest (PostgreSQL row locks).
         query = query.with_for_update()
     return db.scalars(query.order_by(Report.created_at)).all()
+
+
+def barangay_of(db: Session, case: Case):
+    """A case stays in one barangay, so any of its reports answers."""
+    return members(db, case.id, confirmed_only=False)[0].barangay_id
 
 
 def shared_status(reports):
@@ -213,6 +221,8 @@ def link_reports(body: LinkInput, db: Session = Depends(get_db), user: User = De
     if body.report_id == body.other_report_id:
         raise HTTPException(422, "Choose two different reports")
     pair = [authorized_report(report_id, db, user) for report_id in (body.report_id, body.other_report_id)]
+    if pair[0].barangay_id != pair[1].barangay_id:
+        raise HTTPException(409, "Reports from different barangays cannot be grouped")
     for report in pair:
         if report.status == "Rejected":
             raise HTTPException(409, "Rejected reports cannot be grouped")
@@ -275,6 +285,8 @@ def decide_evidence(report_id: str, body: CaseDecision, db: Session = Depends(ge
         sync(db, case, user.id)
     else:
         report.case_id = None
+        # Boundaries loaded while it was linked placed it with the case; on its own, its pin decides.
+        report.barangay_id = barangays.barangay_id_for(db, report.latitude, report.longitude)
         log(db, report.id, user.id, f"Not the same incident as {reference}; reviewed on its own.{note}")
     db.commit()
     return case_data(db, report, user)

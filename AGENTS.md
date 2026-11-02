@@ -1,7 +1,7 @@
 # BarangAI project rules
 
 - Follow the user's global AGENTS.md instructions.
-- Build a single-barangay academic prototype (scope: DLSU-D Chapters 1–2). Never auto-forward reports to outside offices.
+- Build a barangay incident-reporting app for the PLDT AI in 30 Hours hackathon. This replaced the DLSU-D paper as the project's scope, so features may go beyond the paper. Each staff account belongs to one barangay; administrators see all. Never auto-forward reports to outside offices.
 - Required roles: resident, staff, administrator. Enforce permissions in the API.
 - Keep model prediction, resident category, and staff-verified category distinct.
 - Categories: flooding, fallen_trees, broken_streetlights, exposed_wiring, potholes, uncollected_garbage, damaged_signage, other. The model predicts only its trained subset.
@@ -19,4 +19,5 @@
 - Mascot Kap: 2D stills cut from the user's own pose sheet (salakot, vest recoloured blue), animated with CSS/Motion; never redrawn or regenerated. 3D is shelved (procedural Blender builds were rejected).
 - Motion: subtle and trustworthy (150–250 ms, bounce only on the map pin and success check), Motion library, CSS where enough, off under `prefers-reduced-motion`.
 - Refactor order: fix, then redesign the frontend, then improve the backend. The old EfficientNet classifier (`inference.py`, `ml/`, `models/`) stays frozen and unused; `duplicates.py` stays frozen and is reused as is. The chatbot is in scope.
+- Staff jurisdiction (2 Nov 2026): the server places each report in a barangay from its pin, using GeoJSON boundaries checked in plain Python (no PostGIS). Staff get a 404 outside their barangay; reports outside every boundary are for administrators only; a case stays in one barangay. Enforcement starts when the first barangay is loaded, so all staff share one desk until then. Not Supabase row policies: permissions stay in the API.
 - Report AI (option C, 28 Oct 2026): a Cloudflare Workers AI vision model (Mistral Small 3.1 24B; Gemma 3 is not allowed on the Workers Free account) writes the category, a description unique to each photo and hazard flags; MobileCLIP2-S0 (ONNX on Render, research-only licence) cross-checks the category, stands in when Cloudflare is down and gives duplicate embeddings. Location comes from the photo's GPS, then the phone's, with OpenStreetMap street names. When nothing looks broken, the AI still picks the closest category, marks it "AI unsure · please check" and says so in the description; checker-only and broken-streetlight guesses always ask the resident to check. Auto-fill only assists: residents review and edit all of it, and Review shows a disclaimer and a required tick whenever an AI or GPS value is still in use (1 Nov 2026); staff verify. Not SigLIP: Hugging Face Spaces with CPU are paid on the user's account. No local training data; tune and evaluate only with `apps/api/tools/evaluate_ai.py`, keeping tune and test photos apart.

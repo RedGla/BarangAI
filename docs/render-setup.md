@@ -1,4 +1,4 @@
-# Render + Supabase academic demo
+# Render + Supabase hackathon demo
 
 The prepared configuration builds React and FastAPI into one container. Render serves the website at `/` and the API at `/api` on the same HTTPS origin. Supabase holds PostgreSQL data and private incident photos. Local development keeps its existing storage and proxy setup.
 
@@ -33,7 +33,7 @@ Automatic code deployments are disabled with `autoDeployTrigger: "off"`. Bluepri
 
 The image builds with `deploy/Dockerfile.render`. Startup checks the required environment, upgrades the database with Alembic, and starts one application worker on Render's `PORT`. The free service has no paid pre-deploy step, so migrations run at startup. Keep schema changes compatible with the previous release; rolling back an application image does not undo database migrations. Never run a schema downgrade against live data without a reviewed backup and explicit authorization.
 
-Create the initial staff account from a trusted local terminal connected to this database with `python -m barangai.bootstrap_staff <staff-email>` inside `apps/api`. It prompts privately for the password. Render's free service does not provide an interactive shell. Use synthetic accounts and reports for the academic demonstration.
+Create the initial staff account from a trusted local terminal connected to this database with `python -m barangai.bootstrap_staff <staff-email>` inside `apps/api`. It prompts privately for the password. Once barangays are loaded (see [deployment guide](deployment.md#staff-jurisdiction)), staff accounts also need `--barangay "<name>"`. Render's free service does not provide an interactive shell. Use synthetic accounts and reports for the hackathon demonstration.
 
 ## 4. Verification after deployment
 
@@ -48,7 +48,7 @@ Remote checks and physical phone checks require the intended service, credential
 
 ## Free service limits
 
-Render's [free service limits](https://render.com/docs/free) include sleeping after 15 idle minutes, a cold start on the next visit, and ephemeral local files. Free hours, build minutes, and bandwidth have usage limits. Use a free account without a payment method for a strict no-billing demo, or review spending controls before adding payment details. Keep an eye on Supabase quotas too. This setup is for an academic demonstration, not an emergency response service.
+Render's [free service limits](https://render.com/docs/free) include sleeping after 15 idle minutes, a cold start on the next visit, and ephemeral local files. Free hours, build minutes, and bandwidth have usage limits. Use a free account without a payment method for a strict no-billing demo, or review spending controls before adding payment details. Keep an eye on Supabase quotas too. This setup is for an hackathon demonstration, not an emergency response service.
 
 ## Local validation
 
