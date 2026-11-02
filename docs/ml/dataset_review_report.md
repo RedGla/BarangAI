@@ -207,7 +207,7 @@ Seeded contact-sheet samples (`ml/data/review/cs_*.jpg`), generally 24–48 orig
 ## 9. Reproduce
 
 ```bash
-# credentials as environment variables only (KAGGLE_API_TOKEN, ROBOFLOW_API_KEY); see sonnet_implementation_spec.md S1
+# credentials as environment variables only (KAGGLE_API_TOKEN, ROBOFLOW_API_KEY); see implementation_spec.md S1
 python ml/audit/fetch.py kaggle akinduhiman/urban-issues-dataset urban_issues          # ...one line per registry row
 python ml/audit/fetch.py mendeley rkh7nz2rcp 1 md_illegal_dumping_bd --folders Real   # resumable; incomplete here
 python -I ml/audit/inventory.py ml/data/raw/<source>                                   # per source

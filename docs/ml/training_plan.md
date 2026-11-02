@@ -4,7 +4,7 @@ Version 2 (Phase 2), 25 October 2026. Supersedes version 1.
 
 - This document covers *how* to train.
 - `evaluation_protocol.md` covers how results are judged.
-- `sonnet_implementation_spec.md` covers the code.
+- `implementation_spec.md` covers the code.
 - `dataset_review_report.md` holds the data evidence.
 
 Numbers marked [E] are planning estimates, not results.

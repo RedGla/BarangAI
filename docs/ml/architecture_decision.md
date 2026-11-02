@@ -128,7 +128,7 @@ Notes:
 ## 8. Consequences
 
 - **Code.** Small API change: accept a 6-label checkpoint, apply the temperature, map `other` to `None`. Existing v3/v4 5-class checkpoints keep loading.
-- **Tooling.** New data tooling: source adapters, deduplication, audit, calibration and evaluation. Specified in `sonnet_implementation_spec.md`.
+- **Tooling.** New data tooling: source adapters, deduplication, audit, calibration and evaluation. Specified in `implementation_spec.md`.
 - **Dependencies.** `timm` becomes an ML-side dependency. It joins the API only if a timm backbone wins and the human approves (spec S9e).
 - **Deployment.** Unchanged unless a new checkpoint passes the acceptance gates in evaluation protocol §8. The v3 demo model stays active until a human approves replacement.
 - **Embeddings.** Changing the checkpoint changes `model_version`. Existing duplicate embeddings become incomparable; `duplicates.py` already refuses mixed versions. No migration is needed.

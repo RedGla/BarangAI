@@ -67,7 +67,7 @@ Local Torch/TorchVision is not installed. Real checkpoint loading in the local A
 
 Private notebook: https://www.kaggle.com/code/reddelmundo/barangai-watch-model-training
 
-Staging root: `C:/Users/rapha/.codex/visualizations/2026/10/14/01a137ee-03cf-7462-b459-16fa6c6e0bbf/training-staging`.
+Staging root: a private local folder on the training machine, outside the repository.
 
 No commit, push, public publication or deployment was performed. Historical acquisition/handoff notes retained privately in the training artifact directory.
 
