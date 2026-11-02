@@ -24,6 +24,10 @@ Before release, measure checker latency and memory under the Free plan's limits,
 
 Render Free sleeps when idle; Supabase Free can pause inactive projects and has storage/database quotas. Check current free-plan settings before a presentation, keep backups and allow time for startup. Leave paid upgrades disabled where possible. See the linked provider guides for verified restrictions.
 
+Spam limits: uploads, previews, chat and street-name lookups are limited per signed-in account, not per network address, because every request reaches the Render container from Render's own proxy. Reports (`MAX_REPORTS_PER_DAY`, default 10) and added details (`MAX_ADDENDA_PER_DAY`, default 20) are also capped per resident per 24 hours in the database, so a restart does not reset them. Login is limited per email and, more loosely, per address. `TRUSTED_PROXY_HOPS` stays 0 until Render's `X-Forwarded-For` chain has been checked on the live service; do not use uvicorn's `--forwarded-allow-ips="*"`, which trusts the leftmost, client-written entry.
+
+Face blurring needs `opencv-python-headless` (in `deploy/requirements-render-vision.txt`, about 60 MB of image and 35 MB of memory). Detection runs on a 640 px copy, about a quarter-second per photo on one local CPU thread; Render Free's share is slower and unmeasured. Set `FACE_BLUR=off` if uploads become too slow on the hosted plan.
+
 Images are sanitized before upload. The backend rejects a public bucket and authorizes every image response. Supabase secrets never enter the browser. Review [deletion and backup handling](data-deletion.md), approve a retention policy before using real resident data, and back up Storage objects separately from database backups. Image storage and database writes are not an atomic cross-service transaction; failed cleanup logs a report identifier for operator reconciliation.
 
 Local images are not copied automatically to Supabase; migrate and verify any existing real data before changing storage settings.

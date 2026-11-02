@@ -7,7 +7,7 @@ dependencies = ["fastapi", "uvicorn", "sqlalchemy>=2,<2.1", "alembic", "psycopg2
 [project.optional-dependencies]
 test = ["pytest"]
 dev = ["pytest", "ruff"]
-ai = ["onnxruntime", "numpy"]
+ai = ["onnxruntime", "numpy", "opencv-python-headless"]
 
 [tool.setuptools.packages.find]
 include = ["barangai*"]

@@ -1,7 +1,10 @@
+import hashlib
 import io
 import logging
 import os
 import re
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -9,6 +12,8 @@ import httpx
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from . import privacy
 
 
 class StorageRequestUncertain(HTTPException):
@@ -113,16 +118,44 @@ def image_response(location):
     return FileResponse(location, media_type="image/jpeg", headers=headers)
 
 
+_sanitized: "OrderedDict[str, bytes]" = OrderedDict()
+_sanitized_lock = threading.Lock()
+
+
 def sanitize_image(data: bytes) -> bytes:
+    """Rotated upright, at most MAX_IMAGE_EDGE pixels on the long side, faces blurred, every metadata field dropped.
+
+    The AI preview and the submission upload the same photo, so the result is kept briefly by the upload's hash and
+    the second call skips the face check.
+    """
     if len(data) > int(os.environ.get("MAX_IMAGE_BYTES", 5_000_000)):
         raise HTTPException(413, "Image too large")
+    key = hashlib.sha256(data).hexdigest()
+    with _sanitized_lock:
+        if key in _sanitized:
+            _sanitized.move_to_end(key)
+            return _sanitized[key]
     try:
         with Image.open(io.BytesIO(data)) as image:
             if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 20_000_000:
                 raise HTTPException(422, "Unsupported image")
             image.load()
-            output = io.BytesIO()
-            ImageOps.exif_transpose(image).convert("RGB").save(output, format="JPEG", quality=85)
-            return output.getvalue()
+            upright = ImageOps.exif_transpose(image).convert("RGB")
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise HTTPException(422, "Invalid image") from None
+    edge = int(os.environ.get("MAX_IMAGE_EDGE", 1600))
+    upright.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+    upright, _ = privacy.blur_faces(upright)
+    output = io.BytesIO()
+    upright.save(output, format="JPEG", quality=82, optimize=True)
+    result = output.getvalue()
+    with _sanitized_lock:
+        _sanitized[key] = result
+        while len(_sanitized) > 16:
+            _sanitized.popitem(last=False)
+    return result
+
+
+def clear_sanitized_cache():
+    with _sanitized_lock:
+        _sanitized.clear()

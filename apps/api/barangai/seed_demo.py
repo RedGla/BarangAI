@@ -11,7 +11,7 @@ from sqlalchemy.engine import make_url
 from .auth import hasher
 from .db import database_url, session_for_url
 from .media import sanitize_image, save_image
-from .models import Notification, Report, ReportEvent, StaffAction, User
+from .models import Case, Notification, Report, ReportAddendum, ReportEvent, StaffAction, User
 from .reports import CATEGORIES
 from .workflow import NEXT
 
@@ -81,8 +81,62 @@ def seed(password: str, count: int):
                 db.add(
                     StaffAction(report_id=report.id, actor_id=staff.id, kind="action", note="Synthetic crew dispatched")
                 )
+            report.location_source = "photo"
+            if previous in {"Accepted", "In Progress", "Resolved"}:
+                # As the workflow does on acceptance: a one-report case, so it shows on the residents' map.
+                case = Case(category=category, latitude=report.latitude, longitude=report.longitude,
+                            created_by=staff.id)
+                db.add(case)
+                db.flush()
+                report.case_id, report.case_confirmed = case.id, True
+            if previous == "Pending":
+                db.add(Notification(user_id=staff.id, report_id=report.id, status="Pending", kind="new_report"))
             report.image_path = save_image(report.id, photo(index))
+        pitch_story(db, staff, residents)
         db.commit()
+
+
+def pitch_story(db, staff, residents):
+    """A few connected reports for the demo: a flood two residents reported (grouped, being fixed, with a note
+    added later), a live wire waiting for review (high priority), and a report whose pin was moved far from the
+    photo's GPS (staff photo checks). Synthetic streets and people only."""
+    spot = (CENTER[0] + 0.001, CENTER[1] - 0.001)
+    case = Case(category="flooding", latitude=spot[0], longitude=spot[1], location_label="Demo Riverside Street",
+                created_by=staff.id)
+    db.add(case)
+    db.flush()
+    for offset, resident in enumerate(residents):
+        report = Report(resident_id=resident.id, resident_category="flooding", verified_category="flooding",
+                        status="In Progress", image_path="", location_label="Demo Riverside Street",
+                        description="Synthetic demo: street flooded after rain, water up to the ankles.",
+                        latitude=spot[0] + offset * 0.0002, longitude=spot[1], hazards=["blocks_road"],
+                        location_source="photo", case_id=case.id, case_confirmed=True)
+        db.add(report)
+        db.flush()
+        previous = None
+        for status in PATH[:4]:
+            db.add(ReportEvent(report_id=report.id, from_status=previous, to_status=status,
+                               actor_id=resident.id if previous is None else staff.id))
+            previous = status
+        report.image_path = save_image(report.id, photo(100 + offset))
+        if offset == 0:
+            db.add(ReportAddendum(report_id=report.id, author_id=resident.id,
+                                  note="Synthetic demo: the water is knee-deep now and cars are turning back."))
+            db.add(Notification(user_id=staff.id, report_id=report.id, status="In Progress", kind="addendum"))
+    wire = Report(resident_id=residents[0].id, resident_category="exposed_wiring", status="Pending", image_path="",
+                  location_label="Demo Mabini Street", latitude=CENTER[0] - 0.001, longitude=CENTER[1] + 0.001,
+                  description="Synthetic demo: a cable is hanging low over the sidewalk.",
+                  hazards=["electrical_hazard", "risk_to_people"], location_source="photo")
+    moved = Report(resident_id=residents[1].id, resident_category="potholes", status="Pending", image_path="",
+                   location_label="Demo Rizal Street", latitude=CENTER[0] + 0.004, longitude=CENTER[1] + 0.002,
+                   description="Synthetic demo: deep pothole in the middle lane.", location_source="manual",
+                   trust_flags=[{"code": "pin_far_from_photo", "detail": 420}, {"code": "old_photo", "detail": 30}])
+    for index, report in enumerate((wire, moved)):
+        db.add(report)
+        db.flush()
+        db.add(ReportEvent(report_id=report.id, to_status="Pending", actor_id=report.resident_id))
+        db.add(Notification(user_id=staff.id, report_id=report.id, status="Pending", kind="new_report"))
+        report.image_path = save_image(report.id, photo(200 + index))
 
 
 if __name__ == "__main__":

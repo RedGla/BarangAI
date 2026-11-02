@@ -37,7 +37,11 @@ if (role !== 'none' && !process.env.SEED_DEMO_PASSWORD)
   throw new Error('Set SEED_DEMO_PASSWORD to the seeded demo password.')
 
 mkdirSync(out, { recursive: true })
-const browser = await puppeteer.launch({ executablePath: chrome })
+// CHROME_NO_SANDBOX=1 for containers that run as root (cloud sessions); never needed on a desktop.
+const browser = await puppeteer.launch({
+  executablePath: chrome,
+  args: process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : [],
+})
 const context = await browser.createBrowserContext()
 if (role !== 'none') {
   const page = await context.newPage()
@@ -92,15 +96,23 @@ const FLOWS = {
     await new Promise(r => setTimeout(r, 1500))
     await shot('3-location')
     await click(page, 'Next')
-    await click(page, 'Exposed wiring')
+    await click(page, 'Flooding')
     await new Promise(r => setTimeout(r, 400))
     await shot('4-details')
     await click(page, 'Next')
     await new Promise(r => setTimeout(r, 400))
     await shot('5-review')
+    // Nothing is sent until the resident ticks that they checked what the AI filled in.
+    await click(page, 'I checked the category')
     await click(page, 'Submit report')
     await new Promise(r => setTimeout(r, 1200))
-    await shot('6-sent')
+    // The seeded resident already has an open flood report nearby, so the "already reported" sheet opens.
+    if (await page.$('::-p-text(different problem)')) {
+      await shot('6-already-reported')
+      await click(page, 'different problem')
+      await new Promise(r => setTimeout(r, 1200))
+    }
+    await shot('7-sent')
   },
 }
 

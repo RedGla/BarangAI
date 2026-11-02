@@ -1,5 +1,6 @@
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, m } from 'motion/react'
 import {
   Camera,
@@ -21,6 +22,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Kap, kapAvailable } from '@/components/Kap'
+import { DateText } from '@/components/DateText'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Alert, LargeTitle } from '@/components/page'
 import { cn } from '@/lib/utils'
 import { post } from '../../lib/api'
@@ -30,8 +33,9 @@ import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
 import { MapPicker } from './MapPicker'
 import { photoCoordinates, useStreetName, type LocationSource } from './location'
-import { useCommunityCases, useSubmitReport } from './queries'
-import type { Category, Prediction, Report } from './types'
+import { MAX_ORIGINAL_BYTES, MAX_UPLOAD_BYTES, photoDetails, shrinkPhoto, type PhotoDetails } from './photo'
+import { findNearby, reportKeys, useCommunityCases, useSubmitReport } from './queries'
+import type { Category, Nearby, Prediction, Report } from './types'
 
 const UNAVAILABLE: Prediction = { prediction_available: false, model_category: null, confidence: null }
 const NOT_FILLED = { category: false, description: false }
@@ -47,7 +51,8 @@ function photoProblem(file: File) {
     ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
     (!file.type && /\.(jpe?g|png|webp)$/i.test(file.name))
   if (!supported) return 'Choose a JPG, PNG, or WebP photo.'
-  if (file.size > 5_000_000) return 'Photo is too large. Choose a photo of 5 MB or less.'
+  // Phone photos are shrunk before upload; only very large originals are refused here.
+  if (file.size > MAX_ORIGINAL_BYTES) return 'Photo is too large. Choose a photo of 25 MB or less.'
   return ''
 }
 
@@ -77,6 +82,19 @@ export function ReportForm() {
   const [locating, setLocating] = useState(false)
   const [error, setError] = useState('')
   const [submitted, setSubmitted] = useState<Report | null>(null)
+  // Read from the original photo before shrinking drops them; staff use them to check the pin and date.
+  const [details, setDetails] = useState<PhotoDetails | null>(null)
+  const [photoGps, setPhotoGps] = useState<[number, number] | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const pickToken = useRef(0)
+  // The resident ticks this after checking what the AI filled in; staff still verify every report.
+  const [confirmed, setConfirmed] = useState(false)
+  // "You already reported this": the resident's own open report or a neighbours' case near the pin.
+  const [nearby, setNearby] = useState<Nearby | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   // Which fields the AI filled from the photo; editing a field hands it back to the resident.
   const [aiFilled, setAiFilled] = useState(NOT_FILLED)
   const [locationSource, setLocationSource] = useState<LocationSource>(null)
@@ -154,9 +172,22 @@ export function ReportForm() {
       setError(problem)
       return
     }
-    setPhoto(file)
+    const token = ++pickToken.current
+    setDetails(null)
+    setPhotoGps(null)
+    setPreparing(true)
+    void photoDetails(file).then(found => token === pickToken.current && setDetails(found))
+    // Shrunk in the browser so uploads are quick on mobile data; the original stays on the phone.
+    void shrinkPhoto(file).then(small => {
+      if (token !== pickToken.current) return
+      setPreparing(false)
+      if (small.size > MAX_UPLOAD_BYTES) setError('Photo is too large. Choose a photo of 5 MB or less.')
+      else setPhoto(small)
+    })
     // Location without typing: the photo's own GPS first, then the phone's, quietly (the pin can still move).
     void photoCoordinates(file).then(coordinates => {
+      if (token !== pickToken.current) return
+      setPhotoGps(coordinates)
       if (coordinates) {
         setLatitude(String(coordinates[0]))
         setLongitude(String(coordinates[1]))
@@ -199,7 +230,7 @@ export function ReportForm() {
       { enableHighAccuracy: true, timeout: 10000 },
     )
   }
-  function submit() {
+  async function submit() {
     if (!photo || !category) {
       setError('Add a photo and category.')
       return
@@ -208,13 +239,35 @@ export function ReportForm() {
       setError('Enter valid coordinates.')
       return
     }
+    if (!joining) {
+      // Ask first if this looks like something already reported; a failed check never blocks the report.
+      setChecking(true)
+      const found = await findNearby(category, latitude, longitude).catch(() => null)
+      setChecking(false)
+      if ((found?.own?.length ?? 0) > 0 || (found?.cases?.length ?? 0) > 0) {
+        setNearby(found)
+        return
+      }
+    }
+    send()
+  }
+  function send(caseId = joining?.id) {
+    if (!photo || !category) return
+    setNearby(null)
     const form = new FormData()
     form.set('image', photo)
     form.set('resident_category', category)
     form.set('latitude', latitude)
     form.set('longitude', longitude)
     if (description.trim()) form.set('description', description.trim())
-    if (joining) form.set('case_id', joining.id)
+    if (caseId) form.set('case_id', caseId)
+    if (locationSource) form.set('location_source', locationSource)
+    if (details?.takenAt) form.set('photo_taken_at', details.takenAt)
+    if (details?.camera) form.set('photo_camera', '1')
+    if (photoGps) {
+      form.set('photo_latitude', String(photoGps[0]))
+      form.set('photo_longitude', String(photoGps[1]))
+    }
     submitReport.mutate(form, {
       onSuccess: report => {
         navigator.vibrate?.(25)
@@ -223,8 +276,30 @@ export function ReportForm() {
       onError: caught => setError(caught.message),
     })
   }
+  /** Adds this photo and note to the resident's own open report instead of opening a second one. */
+  async function addToOwn(reportId: string) {
+    if (!photo) return
+    const form = new FormData()
+    form.set('note', description.trim() || t('Another photo of the same problem.'))
+    form.set('image', photo)
+    setAdding(true)
+    try {
+      await post(`/reports/${reportId}/addenda`, form)
+      await queryClient.invalidateQueries({ queryKey: reportKeys.all })
+      setNearby(null)
+      navigate(`/reports/${reportId}`)
+    } catch (caught) {
+      setNearby(null)
+      setError(caught instanceof Error ? caught.message : 'Request failed')
+    } finally {
+      setAdding(false)
+    }
+  }
   function startOver() {
     setParams({}, { replace: true })
+    setConfirmed(false)
+    setDetails(null)
+    setPhotoGps(null)
     setSubmitted(null)
     setPhoto(null)
     setPreview('')
@@ -242,7 +317,7 @@ export function ReportForm() {
 
   if (submitted) return <SuccessView report={submitted} onAnother={startOver} />
 
-  const ready = [Boolean(photo), validCoordinates(latitude, longitude), Boolean(category), true]
+  const ready = [Boolean(photo), validCoordinates(latitude, longitude), Boolean(category), confirmed]
   const located = validCoordinates(latitude, longitude)
   const coordinates = located ? `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}` : ''
   const hazards = prediction?.hazards ?? []
@@ -321,6 +396,7 @@ export function ReportForm() {
                   prediction={prediction}
                   onSelect={selectPhoto}
                   onDrop={pickPhoto}
+                  preparing={preparing}
                 />
               )}
               {step === 1 && (
@@ -568,6 +644,15 @@ export function ReportForm() {
                       </div>
                     ))}
                   </dl>
+                  <div className="border-t bg-muted/40 px-4 py-3.5">
+                    <p className="flex items-start gap-2 text-[13.5px] text-muted-foreground">
+                      <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                      <Txt>
+                        The AI only helps you fill in this form. It can be wrong, so check the category, description and
+                        pin before sending. Barangay staff verify every report.
+                      </Txt>
+                    </p>
+                  </div>
                 </div>
               )}
             </m.div>
@@ -577,42 +662,68 @@ export function ReportForm() {
               <Txt>{error}</Txt>
             </Alert>
           )}
-          <div className="sticky bottom-[calc(var(--tab-offset)+12px)] z-20 mt-6 flex gap-2.5 md:bottom-28 lg:static">
-            {step > 0 && (
-              <Button
-                variant="secondary"
-                className="glass hairline size-[52px] shrink-0 rounded-2xl px-0"
-                type="button"
-                onClick={() => go(step - 1)}
-                aria-label={t('Back')}
+          {/* The tick box rides with the Submit button so the sticky bar can never cover it on a phone. */}
+          <div className="sticky bottom-[calc(var(--tab-offset)+12px)] z-20 mt-6 space-y-2.5 md:bottom-28 lg:static">
+            {step === STEPS.length - 1 && (
+              <label
+                htmlFor="confirm-checked"
+                className="glass hairline flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl px-4 py-2.5 text-[15px] font-medium"
               >
-                <ChevronLeft className="size-5" />
-              </Button>
+                <input
+                  id="confirm-checked"
+                  type="checkbox"
+                  className="size-5 shrink-0 accent-[var(--primary)]"
+                  checked={confirmed}
+                  onChange={event => setConfirmed(event.target.checked)}
+                />
+                <Txt>I checked the category, description and pin.</Txt>
+              </label>
             )}
-            {step < STEPS.length - 1 ? (
-              <Button
-                size="lg"
-                className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
-                type="button"
-                disabled={!ready[step]}
-                onClick={() => go(step + 1)}
-              >
-                <Txt>Next</Txt> <ChevronRight />
-              </Button>
-            ) : (
-              <Button
-                size="lg"
-                className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
-                type="button"
-                disabled={submitReport.isPending}
-                onClick={submit}
-              >
-                {submitReport.isPending && <LoaderCircle className="animate-spin" />}
-                <Txt>{submitReport.isPending ? 'Submitting…' : 'Submit report'}</Txt>
-              </Button>
-            )}
+            <div className="flex gap-2.5">
+              {step > 0 && (
+                <Button
+                  variant="secondary"
+                  className="glass hairline size-[52px] shrink-0 rounded-2xl px-0"
+                  type="button"
+                  onClick={() => go(step - 1)}
+                  aria-label={t('Back')}
+                >
+                  <ChevronLeft className="size-5" />
+                </Button>
+              )}
+              {step < STEPS.length - 1 ? (
+                <Button
+                  size="lg"
+                  className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
+                  type="button"
+                  disabled={!ready[step]}
+                  onClick={() => go(step + 1)}
+                >
+                  <Txt>Next</Txt> <ChevronRight />
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
+                  type="button"
+                  disabled={submitReport.isPending || checking || !confirmed}
+                  onClick={() => void submit()}
+                >
+                  {(submitReport.isPending || checking) && <LoaderCircle className="animate-spin" />}
+                  <Txt>{submitReport.isPending || checking ? 'Submitting…' : 'Submit report'}</Txt>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
+        <NearbySheet
+          nearby={nearby}
+          adding={adding}
+          onClose={() => setNearby(null)}
+          onAddToOwn={reportId => void addToOwn(reportId)}
+          onJoinCase={caseId => send(caseId)}
+          onSubmitAnyway={() => send()}
+        />
         <Summary
           step={step}
           preview={preview}
@@ -738,12 +849,14 @@ function PhotoStep({
   prediction,
   onSelect,
   onDrop,
+  preparing = false,
 }: {
   photo: File | null
   preview: string
   prediction: Prediction | null
   onSelect: (event: ChangeEvent<HTMLInputElement>) => void
   onDrop: (file: File) => void
+  preparing?: boolean
 }) {
   const t = useText()
   const [dragging, setDragging] = useState(false)
@@ -763,6 +876,12 @@ function PhotoStep({
           src={preview}
           alt={t('Preview of incident photo')}
         />
+      )}
+      {preparing && !photo && (
+        <p className="flex items-center gap-2 px-1 text-[14px] text-muted-foreground" role="status">
+          <LoaderCircle className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+          <Txt>Preparing your photo…</Txt>
+        </p>
       )}
       {photo && (
         <p className="flex items-center gap-2 px-1 text-[14px] text-muted-foreground" role="status">
@@ -821,7 +940,7 @@ function PhotoStep({
         </label>
       </div>
       <p className="px-1 text-[13px] text-muted-foreground">
-        <Txt>JPG, PNG, or WebP, up to 5 MB. Avoid faces and license plates.</Txt>
+        <Txt>JPG, PNG, or WebP. Large photos are made smaller before sending. Keep faces and plate numbers out.</Txt>
       </p>
       {photo && <AiCard prediction={prediction} />}
     </>
@@ -952,5 +1071,89 @@ function SuccessView({ report, onAnother }: { report: Report; onAnother: () => v
         </Button>
       </div>
     </div>
+  )
+}
+
+/** "You already reported this": offered before a second report of the same issue is sent. */
+function NearbySheet({
+  nearby,
+  adding,
+  onClose,
+  onAddToOwn,
+  onJoinCase,
+  onSubmitAnyway,
+}: {
+  nearby: Nearby | null
+  adding: boolean
+  onClose: () => void
+  onAddToOwn: (reportId: string) => void
+  onJoinCase: (caseId: string) => void
+  onSubmitAnyway: () => void
+}) {
+  const t = useText()
+  const own = nearby?.own[0]
+  const shared = own ? undefined : nearby?.cases[0]
+  return (
+    <Sheet open={Boolean(nearby)} onOpenChange={open => !open && onClose()}>
+      <SheetContent
+        side="bottom"
+        className="mx-auto max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
+        <SheetHeader className="items-center px-5 pt-6 text-center">
+          {kapAvailable('thinking') && <Kap pose="thinking" className="mb-1 h-24 w-auto" />}
+          <SheetTitle className="text-[20px] font-bold">
+            <Txt>{own ? 'You already reported this' : 'Neighbours already reported this'}</Txt>
+          </SheetTitle>
+          <SheetDescription className="text-[15px]">
+            <Txt>
+              {own
+                ? 'Your open report is close to this pin. Add this photo and note to it so staff see everything in one place.'
+                : 'Barangay staff are already working on an issue close to this pin. Add your photo to it as evidence.'}
+            </Txt>
+          </SheetDescription>
+        </SheetHeader>
+        {(own || shared) && (
+          <div className="mx-5 flex items-center gap-3 rounded-2xl bg-muted/60 p-3.5">
+            <CategoryTile category={(own?.resident_category ?? shared?.category)!} />
+            <div className="min-w-0 flex-1 text-[14px]">
+              <strong className="block truncate text-[15px] font-semibold">
+                <Txt>{label(own?.resident_category ?? shared?.category ?? null)}</Txt>
+              </strong>
+              <span className="block text-muted-foreground">
+                {own ? (
+                  <>
+                    #{own.id.slice(0, 8).toUpperCase()} ·{' '}
+                    {own.created_at && <DateText value={own.created_at} compact />}
+                  </>
+                ) : (
+                  <>
+                    {shared?.location_label ?? ''} {shared?.contributors ?? 0} {t('residents')}
+                  </>
+                )}
+                {' · '}
+                {own?.distance_m ?? shared?.distance_m} m {t('away')}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col gap-2.5 px-5 pt-2">
+          {own && (
+            <Button size="lg" disabled={adding} onClick={() => onAddToOwn(own.id)}>
+              {adding && <LoaderCircle className="animate-spin" />}
+              <Txt>Add to my report</Txt>
+            </Button>
+          )}
+          {shared && (
+            <Button size="lg" onClick={() => onJoinCase(shared.id)}>
+              <Users />
+              <Txt>Add my photo to this issue</Txt>
+            </Button>
+          )}
+          <Button size="lg" variant="secondary" disabled={adding} onClick={onSubmitAnyway}>
+            <Txt>It is a different problem. Send a new report</Txt>
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

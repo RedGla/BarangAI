@@ -1,20 +1,27 @@
 import logging
 import os
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import ai, geo, priority
+from . import ai, geo, priority, trust
 from .auth import get_current_user, rate_limit, require_csrf, require_role
 from .db import get_db
 from .media import delete_image, image_response, sanitize_image, save_image
-from .models import CATEGORIES, Report, ReportEvent, User, utc_iso
+from .models import CATEGORIES, Report, ReportAddendum, ReportEvent, User, now, utc_iso
+from .notifications import notify_staff
 
 router = APIRouter(prefix="/reports")
 
 
-def serialize_report(report, detail=False):
+def serialize_addendum(report, addendum):
+    return {"id": addendum.id, "note": addendum.note, "created_at": utc_iso(addendum.created_at),
+            "image_url": f"/api/reports/{report.id}/addenda/{addendum.id}/image" if addendum.image_path else None}
+
+
+def serialize_report(report, detail=False, staff=False):
     result = {
         "id": report.id,
         "resident_id": report.resident_id,
@@ -30,11 +37,16 @@ def serialize_report(report, detail=False):
         "status": report.status,
         "case_id": report.case_id,
         "case_confirmed": report.case_confirmed,
+        "location_source": report.location_source,
         "created_at": utc_iso(report.created_at),
         "updated_at": utc_iso(report.updated_at),
         "image_url": f"/api/reports/{report.id}/image",
     }
+    if staff:
+        # Signals for staff to look closer; residents never see them (trust.py).
+        result["trust_flags"] = report.trust_flags or []
     if detail:
+        result["addenda"] = [serialize_addendum(report, item) for item in report.addenda]
         result["events"] = [
             {
                 "id": event.id,
@@ -66,9 +78,27 @@ def authorized_report(report_id: str, db: Session, user: User):
     return report
 
 
+def read_upload(image: UploadFile) -> bytes:
+    return image.file.read(int(os.environ.get("MAX_IMAGE_BYTES", 5_000_000)) + 1)
+
+
 def sanitized_upload(image: UploadFile):
-    max_bytes = int(os.environ.get("MAX_IMAGE_BYTES", 5_000_000))
-    return sanitize_image(image.file.read(max_bytes + 1))
+    return sanitize_image(read_upload(image))
+
+
+def daily_limit(name, default):
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+def within_daily_cap(db: Session, model, author_column, user_id: str, name: str, default: int):
+    """Counted in the database, so a restart or a second device does not reset it."""
+    since = now() - timedelta(days=1)
+    sent = db.scalar(select(func.count()).select_from(model).where(author_column == user_id, model.created_at >= since))
+    if sent >= daily_limit(name, default):
+        raise HTTPException(429, "Daily report limit reached")
 
 
 @router.post("/predict")
@@ -77,7 +107,7 @@ def preview_prediction(
 ):
     """What the AI can fill in from the photo; the resident reviews and edits all of it."""
     require_role(user, {"resident"})
-    rate_limit(request, "preview", 20)
+    rate_limit(request, "preview", 20, key=user.id)
     result = ai.analyze(sanitized_upload(image), language if language in {"en", "fil", "taglish"} else "en")
     return {
         "prediction_available": result.available,
@@ -100,20 +130,31 @@ def submit_report(
     resident_category: str = Form(...),
     description: str | None = Form(None),
     case_id: str | None = Form(None),
+    location_source: str | None = Form(None),
+    # Read by the browser from the original photo, before it shrank it and dropped these details (trust.py).
+    photo_taken_at: str | None = Form(None),
+    photo_camera: str | None = Form(None),
+    photo_latitude: str | None = Form(None),
+    photo_longitude: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_csrf),
 ):
     require_role(user, {"resident"})
-    rate_limit(request, "upload")
+    rate_limit(request, "upload", key=user.id)
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180) or resident_category not in CATEGORIES:
         raise HTTPException(422, "Invalid location or category")
     description = description.strip() if description else None
     if description and len(description) > 1000:
         raise HTTPException(422, "Description is too long")
+    within_daily_cap(db, Report, Report.resident_id, user.id, "MAX_REPORTS_PER_DAY", 10)
     from . import cases  # Imported here: cases.py builds on this module.
 
     case = cases.open_case_for_evidence(db, case_id) if case_id else None
-    sanitized = sanitized_upload(image)
+    raw = read_upload(image)
+    sanitized = sanitize_image(raw)
+    # The upload's own details win; the browser's reading fills in what shrinking removed.
+    facts = {**trust.client_facts(photo_taken_at, photo_camera, photo_latitude, photo_longitude),
+             **trust.photo_facts(raw)}
     # The model's category, hazards, embedding and street name come from the server, never the client.
     analysis = ai.for_submission(sanitized)
     report = Report(
@@ -130,10 +171,13 @@ def submit_report(
         embedding_model_version=analysis.embedding_version,
         # "I see this too": linked to the case, counted only after staff confirm it.
         case_id=case.id if case else None,
+        location_source=location_source if location_source in trust.SOURCES else None,
+        trust_flags=trust.flags(facts, latitude, longitude) or None,
     )
     db.add(report)
     db.flush()
     db.add(ReportEvent(report_id=report.id, from_status=None, to_status="Pending", actor_id=user.id))
+    notify_staff(db, report, "new_report")
     location = None
     try:
         location = save_image(report.id, sanitized)
@@ -166,7 +210,7 @@ def list_reports(db: Session = Depends(get_db), user: User = Depends(get_current
     reports = db.scalars(query).all()
     # Staff only: a suggested priority with its reasons, never shown to residents.
     scores = priority.for_reports(db, reports)
-    return [{**serialize_report(report), "priority": scores[report.id]} for report in reports]
+    return [{**serialize_report(report, staff=True), "priority": scores[report.id]} for report in reports]
 
 
 @router.get("/{report_id}")
@@ -174,7 +218,64 @@ def report_detail(report_id: str, db: Session = Depends(get_db), user: User = De
     report = authorized_report(report_id, db, user)
     if user.role == "resident":
         return serialize_report(report, detail=True)
-    return {**serialize_report(report, detail=True), "priority": priority.for_reports(db, [report])[report.id]}
+    return {**serialize_report(report, detail=True, staff=True),
+            "priority": priority.for_reports(db, [report])[report.id]}
+
+
+# Residents may add to a report until it is closed; afterwards a new report is the right place.
+CLOSED = ("Resolved", "Rejected")
+
+
+@router.post("/{report_id}/addenda", status_code=201)
+def add_details(
+    report_id: str,
+    request: Request,
+    note: str = Form(...),
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_csrf),
+):
+    """A resident adds details (and optionally another photo) to their own open report. Staff are notified."""
+    require_role(user, {"resident"})
+    report = authorized_report(report_id, db, user)
+    if report.status in CLOSED:
+        raise HTTPException(409, "This report is closed")
+    note = note.strip()
+    if not note or len(note) > 1000:
+        raise HTTPException(422, "Add a note of up to 1000 characters")
+    rate_limit(request, "addendum", key=user.id)
+    within_daily_cap(db, ReportAddendum, ReportAddendum.author_id, user.id, "MAX_ADDENDA_PER_DAY", 20)
+    sanitized = sanitized_upload(image) if image is not None and image.filename else None
+    addendum = ReportAddendum(report_id=report.id, author_id=user.id, note=note)
+    db.add(addendum)
+    db.flush()
+    notify_staff(db, report, "addendum")
+    location = None
+    try:
+        if sanitized:
+            location = save_image(addendum.id, sanitized)
+            addendum.image_path = location
+        db.commit()
+    except Exception:
+        db.rollback()
+        if location:
+            try:
+                delete_image(location)
+            except Exception:
+                logging.getLogger(__name__).error("Could not clean up image for rolled-back addendum %s", addendum.id)
+        raise
+    db.refresh(addendum)
+    return serialize_addendum(report, addendum)
+
+
+@router.get("/{report_id}/addenda/{addendum_id}/image")
+def addendum_image(report_id: str, addendum_id: str, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    report = authorized_report(report_id, db, user)
+    addendum = db.get(ReportAddendum, addendum_id)
+    if not addendum or addendum.report_id != report.id or not addendum.image_path:
+        raise HTTPException(404, "Image not found")
+    return image_response(addendum.image_path)
 
 
 @router.get("/{report_id}/image")

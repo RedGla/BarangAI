@@ -7,6 +7,60 @@ const LanguageContext = createContext<{ language: Language; setLanguage: (value:
 })
 
 const filipino: Record<string, string> = {
+  'Photo is too large. Choose a photo of 25 MB or less.':
+    'Masyadong malaki ang larawan. Pumili ng larawang hindi lalampas sa 25 MB.',
+  'Another photo of the same problem.': 'Isa pang larawan ng parehong problema.',
+  'The AI only helps you fill in this form. It can be wrong, so check the category, description and pin before sending. Barangay staff verify every report.':
+    'Tumutulong lang ang AI sa pagpuno ng form na ito. Maaari itong magkamali, kaya suriin ang kategorya, paglalarawan at pin bago ipadala. Sinusuri ng kawani ng barangay ang bawat ulat.',
+  'I checked the category, description and pin.': 'Nasuri ko ang kategorya, paglalarawan at pin.',
+  'Preparing your photo…': 'Inihahanda ang iyong larawan…',
+  'JPG, PNG, or WebP. Large photos are made smaller before sending. Keep faces and plate numbers out.':
+    'JPG, PNG, o WebP. Pinaliliit ang malalaking larawan bago ipadala. Iwasang makuhanan ang mukha at plaka.',
+  'You already reported this': 'Naiulat mo na ito',
+  'Neighbours already reported this': 'Naiulat na ito ng mga kapitbahay',
+  'Your open report is close to this pin. Add this photo and note to it so staff see everything in one place.':
+    'Malapit sa pin na ito ang bukas mong ulat. Idagdag dito ang larawan at tala para makita ng kawani ang lahat sa iisang lugar.',
+  'Barangay staff are already working on an issue close to this pin. Add your photo to it as evidence.':
+    'May inaasikaso nang isyu ang kawani ng barangay malapit sa pin na ito. Idagdag ang iyong larawan bilang patunay.',
+  away: 'ang layo',
+  'Add to my report': 'Idagdag sa aking ulat',
+  'Add my photo to this issue': 'Idagdag ang larawan ko sa isyung ito',
+  'It is a different problem. Send a new report': 'Ibang problema ito. Magpadala ng bagong ulat',
+  'Daily report limit reached': 'Naabot mo na ang bilang ng ulat para sa araw na ito. Subukan ulit bukas.',
+  'This report is closed': 'Sarado na ang ulat na ito. Gumawa ng bagong ulat kung may bagong problema.',
+  'Add a note of up to 1000 characters': 'Magdagdag ng tala na hanggang 1000 titik.',
+  'Added later by the resident': 'Idinagdag ng residente pagkatapos',
+  'Photo added later': 'Larawang idinagdag pagkatapos',
+  'Added. Barangay staff were notified.': 'Naidagdag na. Naabisuhan ang kawani ng barangay.',
+  'Add details': 'Magdagdag ng detalye',
+  'Your first report stays as it is. Staff see what you add, with the time you added it.':
+    'Hindi nababago ang una mong ulat. Makikita ng kawani ang idinagdag mo at kung kailan.',
+  'What changed? For example: the water is higher now.': 'Ano ang nagbago? Halimbawa: mas mataas na ang tubig.',
+  'Add a photo (optional)': 'Magdagdag ng larawan (opsiyonal)',
+  Cancel: 'Kanselahin',
+  'Send to staff': 'Ipadala sa kawani',
+  'The pin is {n} m from where the photo was taken.': '{n} m ang layo ng pin sa lugar kung saan kinuha ang larawan.',
+  'The photo was taken {n} days before it was sent.': 'Kinuha ang larawan {n} araw bago ito ipinadala.',
+  "The photo's date is {n} days ahead; the camera clock may be wrong.":
+    '{n} araw na mas maaga ang petsa ng larawan; maaaring mali ang orasan ng camera.',
+  'The photo has no camera or date details. Common for screenshots, downloads and some phones.':
+    'Walang detalye ng camera o petsa ang larawan. Karaniwan ito sa screenshot, download at ilang telepono.',
+  'Check photo': 'Suriin ang larawan',
+  'Photo checks': 'Pagsusuri ng larawan',
+  "The photo's date and GPS match the report.": 'Tugma sa ulat ang petsa at GPS ng larawan.',
+  "Pin from the photo's GPS": 'Pin mula sa GPS ng larawan',
+  "Pin from the phone's GPS": 'Pin mula sa GPS ng telepono',
+  'Pin placed by hand': 'Pin na inilagay nang mano-mano',
+  'Photo details can be edited, so these checks are hints, not proof. Residents do not see them.':
+    'Nababago ang detalye ng larawan, kaya pahiwatig lamang ang mga ito at hindi patunay. Hindi ito nakikita ng mga residente.',
+  'Mark all read': 'Markahang nabasa lahat',
+  'New reports and details residents add will appear here.':
+    'Lalabas dito ang mga bagong ulat at detalyeng idinagdag ng mga residente.',
+  'New report': 'Bagong ulat',
+  'A resident added details': 'May idinagdag na detalye ang residente',
+  "Kap's brief": 'Buod ni Kap',
+  "Worded by AI from today's numbers": 'Isinulat ng AI mula sa mga bilang ngayon',
+  "From today's numbers": 'Mula sa mga bilang ngayon',
   pending: 'Naghihintay ng pasiya',
   confirmed: 'Kumpirmado',
   rejected: 'Hindi kinumpirma',

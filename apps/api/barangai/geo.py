@@ -94,5 +94,5 @@ def reverse(
 ):
     if not enabled():
         raise HTTPException(503, "Street names unavailable")
-    rate_limit(request, "geocode", 30)
+    rate_limit(request, "geocode", 30, key=user.id)
     return {"label": lookup(lat, lng)}

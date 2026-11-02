@@ -53,6 +53,7 @@ describe('location without typing', () => {
     render(<App />)
     fireEvent.change(await screen.findByLabelText(/incident photo/i), { target: { files: [photo()] } })
     await waitFor(() => expect(exif.gps).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByRole('button', { name: /^next/i })).toBeEnabled())
     next()
     expect(await screen.findByText('From your photo', { exact: false })).toBeInTheDocument()
     expect((await screen.findAllByText(/Mabini Street, Zone 1/, {}, { timeout: 3000 })).length).toBeGreaterThan(0)
@@ -60,6 +61,7 @@ describe('location without typing', () => {
     next()
     fireEvent.click(await screen.findByRole('radio', { name: 'Potholes' }))
     next()
+    fireEvent.click(await screen.findByLabelText(/I checked the category/i))
     fireEvent.click(await screen.findByRole('button', { name: /submit report/i }))
     await waitFor(() =>
       expect(requests.some(request => request.init?.method === 'POST' && request.url.endsWith('/reports'))).toBe(true),
@@ -68,6 +70,10 @@ describe('location without typing', () => {
       .body as FormData
     expect(body.get('latitude')).toBe('14.32941')
     expect(body.get('location_label')).toBeNull() // the server looks it up itself
+    // What the browser read from the original photo, for the staff-only photo checks.
+    expect(body.get('location_source')).toBe('photo')
+    expect(body.get('photo_latitude')).toBe('14.32941')
+    expect(requests.some(request => request.url.includes('/nearby?category=potholes'))).toBe(true)
   })
 
   it('falls back to the phone location when the photo has no GPS', async () => {
@@ -182,7 +188,8 @@ describe('choices made while the photo is checked', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input)
-        if (url.endsWith('/auth/me')) return Response.json({ id: 'r1', email: 'resident@example.test', role: 'resident' })
+        if (url.endsWith('/auth/me'))
+          return Response.json({ id: 'r1', email: 'resident@example.test', role: 'resident' })
         if (url.endsWith('/reports/predict')) return new Promise<Response>(resolve => (answer = resolve))
         return Response.json([])
       }),

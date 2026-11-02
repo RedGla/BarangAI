@@ -24,6 +24,11 @@ afterEach(() => {
 
 const photoFile = () => new File(['test'], 'road.jpg', { type: 'image/jpeg' })
 const next = () => fireEvent.click(screen.getByRole('button', { name: /^next/i }))
+/** Chooses a photo and waits until it is ready (photos are shrunk in the background before they count). */
+async function choose(input: HTMLElement, file = photoFile()) {
+  fireEvent.change(input, { target: { files: [file] } })
+  await waitFor(() => expect(screen.getByRole('button', { name: /^next/i })).toBeEnabled())
+}
 async function fillLocation() {
   fireEvent.change(await screen.findByLabelText(/latitude/i), { target: { value: '14.3' } })
   fireEvent.change(screen.getByLabelText(/longitude/i), { target: { value: '120.9' } })
@@ -128,14 +133,18 @@ describe('resident reporting', () => {
         }),
       )
       render(<App />)
-      fireEvent.change(await screen.findByLabelText(picker), { target: { files: [photoFile()] } })
+      await choose(await screen.findByLabelText(picker))
       expect(screen.getByLabelText(/incident photo/i)).not.toBeRequired()
       next()
       await fillLocation()
       next()
       fireEvent.click(await screen.findByRole('radio', { name: 'Potholes' }))
       next()
-      fireEvent.click(await screen.findByRole('button', { name: /submit report/i }))
+      const send = await screen.findByRole('button', { name: /submit report/i })
+      // Nothing is sent until the resident confirms they checked what the AI filled in.
+      expect(send).toBeDisabled()
+      fireEvent.click(screen.getByLabelText(/I checked the category/i))
+      fireEvent.click(send)
       await waitFor(() =>
         expect(requests.some(request => request.init?.method === 'POST' && request.url.endsWith('/reports'))).toBe(
           true,
@@ -160,7 +169,7 @@ describe('resident reporting', () => {
       vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/auth/me') ? resident() : Response.json([]))),
     )
     render(<App />)
-    fireEvent.change(await screen.findByLabelText(/incident photo/i), { target: { files: [photoFile()] } })
+    await choose(await screen.findByLabelText(/incident photo/i))
     next()
     await fillLocation()
     next()

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { m } from 'motion/react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
-import { ArrowRight, CircleCheckBig, Inbox, Layers, Wrench } from 'lucide-react'
+import { ArrowRight, CircleCheckBig, Inbox, Layers, Sparkles, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
@@ -12,7 +12,9 @@ import { EmptyState } from '@/components/page'
 import { Txt, useLanguage, useText } from '../../lib/i18n'
 import { categories, label } from '../reports/categories'
 import { CategoryTile } from '../reports/CategoryIcon'
-import { useReports } from '../reports/queries'
+import { useBrief, useReports } from '../reports/queries'
+import { Kap } from '@/components/Kap'
+import { cn } from '@/lib/utils'
 import { StatusBadge } from '../reports/StatusBadge'
 import type { Report } from '../reports/types'
 import { MapLegend, StaffMap } from './StaffMap'
@@ -107,6 +109,7 @@ export function OverviewPage() {
           </h1>
         </div>
       </div>
+      <BriefCard />
       {reports.error && (
         <p role="alert" className="text-[14px] text-destructive">
           <Txt>{reports.error.message}</Txt>
@@ -300,5 +303,55 @@ export function OverviewPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+/** Kap's morning brief: the API counts the numbers; the model may only reword them (brief.py checks every number). */
+function BriefCard() {
+  const t = useText()
+  const { language } = useLanguage()
+  const brief = useBrief(language)
+  // The brief is a convenience: if it fails or looks wrong, the rest of the overview stands on its own.
+  const data = typeof brief.data?.summary === 'string' && brief.data.facts ? brief.data : undefined
+  if (brief.isError || (brief.isSuccess && !data)) return null
+  return (
+    <section
+      aria-live="polite"
+      className="hairline flex flex-col gap-4 rounded-2xl bg-tint p-5 sm:flex-row sm:items-center"
+    >
+      <Kap pose="clipboard" className="h-24 w-auto shrink-0 self-center" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[17px] font-semibold">
+            <Txt>Kap's brief</Txt>
+          </h2>
+          {data && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
+              {data.source === 'workers_ai' && <Sparkles className="size-3" aria-hidden="true" />}
+              <Txt>{data.source === 'workers_ai' ? "Worded by AI from today's numbers" : "From today's numbers"}</Txt>
+            </span>
+          )}
+        </div>
+        <p className={cn('max-w-[75ch] text-[15.5px] leading-relaxed', !data && 'shimmer h-12 rounded-lg')}>
+          {data?.summary}
+        </p>
+        {data && data.facts.high_priority.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {data.facts.high_priority.map(item => (
+              <Link
+                key={item.id}
+                to={`/desk/reports/${item.id}`}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-card px-3 text-[13.5px] font-medium transition-colors hover:text-primary"
+              >
+                <CategoryTile category={item.category} size="sm" />
+                {t(label(item.category))}
+                {item.place ? ` · ${item.place}` : ''}
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   )
 }

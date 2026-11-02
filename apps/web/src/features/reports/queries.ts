@@ -1,6 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, post } from '../../lib/api'
-import type { CommunityCase, DuplicateResult, Report, ReportCase, Status, StaffAction } from './types'
+import type {
+  Addendum,
+  Brief,
+  CommunityCase,
+  DuplicateResult,
+  Nearby,
+  Report,
+  ReportCase,
+  Status,
+  StaffAction,
+} from './types'
 
 export const reportKeys = {
   all: ['reports'] as const,
@@ -82,3 +92,19 @@ export const useCaseDecision = (id: string) =>
   useReportMutation((body: { decision: 'confirmed' | 'rejected'; note?: string }) =>
     post(`/reports/${id}/case/decision`, body),
   )
+
+/** The resident's own open report of this issue nearby, or a neighbours' accepted case, before submitting. */
+export const findNearby = (category: string, latitude: string, longitude: string, signal?: AbortSignal) =>
+  api<Nearby>(`/nearby?${new URLSearchParams({ category, latitude, longitude }).toString()}`, signal ? { signal } : {})
+
+/** Adds details (and optionally a photo) to the resident's own open report; the original stays unchanged. */
+export const useAddDetails = (id: string) =>
+  useReportMutation((form: FormData) => post<Addendum>(`/reports/${id}/addenda`, form))
+
+export function useBrief(language: string) {
+  return useQuery({
+    queryKey: ['brief', language],
+    queryFn: () => api<Brief>(`/staff/brief?language=${language}`),
+    staleTime: 5 * 60_000,
+  })
+}

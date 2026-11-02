@@ -37,9 +37,42 @@ export type Report = {
   case_confirmed?: boolean
   /** Staff only; null once closed. */
   priority?: Priority | null
+  /** Where the pin came from, as the resident's form reported it. */
+  location_source?: 'photo' | 'device' | 'manual' | null
+  /** Staff only: checks of the photo against the pin and date. Signals to look closer, never proof. */
+  trust_flags?: TrustFlag[]
+  addenda?: Addendum[]
   created_at?: string
   events?: ReportEvent[]
   actions?: StaffAction[]
+}
+export type TrustFlag =
+  | { code: 'pin_far_from_photo'; detail: number }
+  | { code: 'old_photo'; detail: number }
+  | { code: 'photo_date_ahead'; detail: number }
+  | { code: 'no_photo_details'; detail: null }
+/** Details a resident added after sending the report; the original is never changed. */
+export type Addendum = { id: string; note: string; created_at: string; image_url: string | null }
+/** Before submitting: the resident's own open report of this issue, or a neighbours' accepted case. */
+export type Nearby = {
+  own: (Report & { distance_m: number })[]
+  cases: (CommunityCase & { distance_m: number })[]
+}
+/** Kap's daily brief: numbers counted by the API, words by the model only if every number checks out. */
+export type Brief = {
+  summary: string
+  source: 'workers_ai' | 'template'
+  facts: {
+    open: number
+    waiting: number
+    new_today: number
+    resolved_today: number
+    waiting_over_a_day: number
+    high_priority: { id: string; category: Category; place: string | null; score: number }[]
+    high_priority_count: number
+    hotspot: { place: string; open: number } | null
+  }
+  generated_at: string
 }
 export type Prediction = {
   prediction_available: boolean

@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, or_, select
 from .auth import hasher
 from .db import session_for_url
 from .media import delete_image
-from .models import DuplicateSuggestion, Notification, Report, ReportEvent, StaffAction, User, now
+from .models import DuplicateSuggestion, Notification, Report, ReportAddendum, ReportEvent, StaffAction, User, now
 
 REASONS = ("resident-request", "retention-expired", "synthetic-demo-cleanup")
 
@@ -53,11 +53,15 @@ def delete_report(report_id, email, password, *, confirm=None, receipt_path=None
                                       DuplicateSuggestion.candidate_report_id == report_id)),
             (StaffAction, StaffAction.report_id == report_id),
             (ReportEvent, ReportEvent.report_id == report_id),
+            (ReportAddendum, ReportAddendum.report_id == report_id),
         )
+        # Photos residents added later are deleted with the report's own.
+        extra_images = list(db.scalars(select(ReportAddendum.image_path).where(
+            ReportAddendum.report_id == report_id, ReportAddendum.image_path.is_not(None))))
         counts = {model.__tablename__: db.scalar(select(func.count()).select_from(model).where(condition))
                   for model, condition in dependencies}
         if confirm is None:
-            return {"action": "dry-run", "report_id": report_id, "images": 1,
+            return {"action": "dry-run", "report_id": report_id, "images": 1 + len(extra_images),
                     "dependent_rows": counts, "users_deleted": 0}
 
         receipt_file = Path(receipt_path).expanduser().resolve()
@@ -75,6 +79,8 @@ def delete_report(report_id, email, password, *, confirm=None, receipt_path=None
             db.execute(delete(Report).where(Report.id == report_id))
             # SQL changes are still uncommitted if private storage rejects deletion.
             delete_image(report.image_path)
+            for location in extra_images:
+                delete_image(location)
             db.commit()
             receipt = {"action": "report-deleted", "report_id": report_id,
                        "administrator_id": admin_id, "time": now().isoformat(), "reason": reason}
