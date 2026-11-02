@@ -9,9 +9,11 @@ import {
   ChevronRight,
   ImagePlus,
   Info,
+  Lightbulb,
   LoaderCircle,
   LocateFixed,
   Map as MapIcon,
+  Plus,
   Sparkles,
   TriangleAlert,
   Users,
@@ -28,6 +30,7 @@ import { Txt, useLanguage, useText } from '../../lib/i18n'
 import { ResidentAccount } from '../../app/ResidentShell'
 import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
+import { describePrompts, toggleAnswer } from './describe'
 import { MapPicker } from './MapPicker'
 import { photoCoordinates, useStreetName, type LocationSource } from './location'
 import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES } from './photo'
@@ -98,6 +101,15 @@ export function ReportForm() {
   // photo was being checked is theirs, even though the AI's answer arrived afterwards.
   const aiCategory = aiFilled.category && category === prediction?.model_category
   const aiDescription = aiFilled.description && description === prediction?.suggested_description
+  const autoLocation = locationSource === 'photo' || locationSource === 'device'
+  // Auto-fill only assists: whatever it filled must be confirmed by the resident before sending.
+  const autoFilled = aiCategory || aiDescription || autoLocation
+  // The tick covers the exact values the resident saw, so a late GPS fix or AI answer clears it.
+  const shown = [category, description, latitude, longitude, locationSource].join('|')
+  const [confirmedFor, setConfirmedFor] = useState<string | null>(null)
+  const confirmed = confirmedFor === shown
+  // A pin the resident set by hand wins over the quiet GPS lookup that may still be running.
+  const pinnedByHand = useRef(false)
   useEffect(() => {
     if (!photo || typeof URL.createObjectURL !== 'function') return
     const url = URL.createObjectURL(photo)
@@ -193,6 +205,7 @@ export function ReportForm() {
     setLatitude(lat)
     setLongitude(lng)
     setLocationSource('manual')
+    pinnedByHand.current = true
   }
   /** Quiet mode is the automatic attempt after a photo: a refusal shows no error, the resident just sets the pin. */
   function locate(quiet = false) {
@@ -203,6 +216,10 @@ export function ReportForm() {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       position => {
+        if (quiet && pinnedByHand.current) {
+          setLocating(false)
+          return
+        }
         setLatitude(position.coords.latitude.toFixed(6))
         setLongitude(position.coords.longitude.toFixed(6))
         setLocationSource('device')
@@ -225,6 +242,7 @@ export function ReportForm() {
       setError('Enter valid coordinates.')
       return
     }
+    if (autoFilled && !confirmed) return
     const form = new FormData()
     form.set('image', photo)
     form.set('resident_category', category)
@@ -253,6 +271,8 @@ export function ReportForm() {
     setShowMap(false)
     setAiFilled(NOT_FILLED)
     setLocationSource(null)
+    setConfirmedFor(null)
+    pinnedByHand.current = false
     setDirection(-1)
     setStep(0)
   }
@@ -543,50 +563,73 @@ export function ReportForm() {
                       </span>
                     )}
                   </label>
+                  {category && (
+                    <DescribeHelp
+                      category={category}
+                      description={description}
+                      onChange={text => {
+                        setDescription(text.slice(0, 1000))
+                        setAiFilled(current => ({ ...current, description: false }))
+                      }}
+                    />
+                  )}
                 </>
               )}
               {step === 3 && (
-                <div className="hairline overflow-hidden rounded-2xl bg-card">
-                  {preview && (
-                    <img
-                      className="aspect-[2/1] w-full object-cover lg:aspect-[3/1]"
-                      src={preview}
-                      alt={t('Preview of incident photo')}
-                    />
-                  )}
-                  <dl>
-                    {[
-                      { term: 'Photo', value: photo?.name, edit: 0 },
-                      {
-                        term: 'Location',
-                        value: streetName ? `${streetName} (${coordinates})` : coordinates,
-                        edit: 1,
-                      },
-                      { term: 'Incident category', value: t(label(category || null)), edit: 2 },
-                      {
-                        term: 'Description (optional)',
-                        value: description.trim() || t('No description added'),
-                        edit: 2,
-                      },
-                    ].map(item => (
-                      <div key={item.term} className="flex items-start gap-3 border-t px-4 py-3 first:border-t-0">
-                        <div className="min-w-0 flex-1">
-                          <dt className="text-[13px] text-muted-foreground">
-                            <Txt>{item.term}</Txt>
-                          </dt>
-                          <dd className="mt-0.5 text-[16px] break-words">{item.value}</dd>
+                <>
+                  <div className="hairline overflow-hidden rounded-2xl bg-card">
+                    {preview && (
+                      <img
+                        className="aspect-[2/1] w-full object-cover lg:aspect-[3/1]"
+                        src={preview}
+                        alt={t('Preview of incident photo')}
+                      />
+                    )}
+                    <dl>
+                      {[
+                        { term: 'Photo', value: photo?.name, edit: 0, auto: false },
+                        {
+                          term: 'Location',
+                          value: streetName ? `${streetName} (${coordinates})` : coordinates,
+                          edit: 1,
+                          auto: autoLocation,
+                        },
+                        { term: 'Incident category', value: t(label(category || null)), edit: 2, auto: aiCategory },
+                        {
+                          term: 'Description (optional)',
+                          value: description.trim() || t('No description added'),
+                          edit: 2,
+                          auto: aiDescription,
+                        },
+                      ].map(item => (
+                        <div key={item.term} className="flex items-start gap-3 border-t px-4 py-3 first:border-t-0">
+                          <div className="min-w-0 flex-1">
+                            <dt className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+                              <Txt>{item.term}</Txt>
+                              {item.auto && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklab,var(--status-pending)_14%,transparent)] px-2 py-0.5 text-[12px] font-semibold text-[var(--status-pending)]">
+                                  <Sparkles className="size-3" aria-hidden="true" />
+                                  <Txt>Auto-filled · check</Txt>
+                                </span>
+                              )}
+                            </dt>
+                            <dd className="mt-0.5 text-[16px] break-words">{item.value}</dd>
+                          </div>
+                          <button
+                            className="-my-1 min-h-11 px-1 text-[15px] font-medium text-primary"
+                            type="button"
+                            onClick={() => go(item.edit)}
+                          >
+                            <Txt>Edit</Txt>
+                          </button>
                         </div>
-                        <button
-                          className="-my-1 min-h-11 px-1 text-[15px] font-medium text-primary"
-                          type="button"
-                          onClick={() => go(item.edit)}
-                        >
-                          <Txt>Edit</Txt>
-                        </button>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
+                      ))}
+                    </dl>
+                  </div>
+                  {autoFilled && (
+                    <AutoFillCheck confirmed={confirmed} onConfirm={value => setConfirmedFor(value ? shown : null)} />
+                  )}
+                </>
               )}
             </m.div>
           </AnimatePresence>
@@ -622,7 +665,7 @@ export function ReportForm() {
                 size="lg"
                 className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
                 type="button"
-                disabled={submitReport.isPending}
+                disabled={submitReport.isPending || (autoFilled && !confirmed)}
                 onClick={submit}
               >
                 {submitReport.isPending && <LoaderCircle className="animate-spin" />}
@@ -750,6 +793,87 @@ function AiTag({ check = false }: { check?: boolean }) {
   )
 }
 
+/** Tap-to-add answers that prompt the details staff need and a photo cannot show (depth, size, since when). */
+function DescribeHelp({
+  category,
+  description,
+  onChange,
+}: {
+  category: Category
+  description: string
+  onChange: (text: string) => void
+}) {
+  const t = useText()
+  return (
+    <section className="hairline space-y-3 rounded-2xl bg-card p-4" aria-labelledby="describe-help">
+      <h2 id="describe-help" className="flex items-center gap-1.5 text-[15px] font-semibold">
+        <Lightbulb className="size-4 text-primary" aria-hidden="true" />
+        <Txt>Help me describe it</Txt>
+      </h2>
+      {describePrompts[category].map(prompt => {
+        const answers = prompt.answers.map(t)
+        return (
+          <div key={prompt.question} role="group" aria-label={t(prompt.question)} className="space-y-1.5">
+            <p className="text-[13px] text-muted-foreground">
+              <Txt>{prompt.question}</Txt>
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {answers.map(answer => {
+                const chosen = description.includes(answer)
+                return (
+                  <button
+                    key={answer}
+                    type="button"
+                    aria-pressed={chosen}
+                    onClick={() => onChange(toggleAnswer(description, answers, answer))}
+                    className={cn(
+                      'inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-[14px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                      chosen ? 'bg-primary text-primary-foreground' : 'bg-tint text-primary',
+                    )}
+                  >
+                    {chosen ? (
+                      <Check className="size-3.5" aria-hidden="true" />
+                    ) : (
+                      <Plus className="size-3.5" aria-hidden="true" />
+                    )}
+                    {answer.replace(/\.$/, '')}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+/** Auto-fill is only an aid: the resident must confirm what the AI and GPS filled in before sending. */
+function AutoFillCheck({ confirmed, onConfirm }: { confirmed: boolean; onConfirm: (value: boolean) => void }) {
+  return (
+    <div className="hairline space-y-3 rounded-2xl bg-card p-4">
+      <p className="flex gap-2.5 text-[14px] leading-snug">
+        <Info className="mt-0.5 size-4 shrink-0 text-[var(--status-pending)]" aria-hidden="true" />
+        <span>
+          <Txt>
+            Auto-fill only helps you fill in this form. The AI and GPS can be wrong, so check that the category,
+            location, and description are correct. Barangay personnel still verify every report.
+          </Txt>
+        </span>
+      </p>
+      <label className="flex min-h-11 items-center gap-3 rounded-xl bg-muted/60 px-3 py-2 text-[15px] font-medium has-focus-visible:ring-2 has-focus-visible:ring-ring">
+        <input
+          type="checkbox"
+          className="size-5 shrink-0 accent-[var(--primary)]"
+          checked={confirmed}
+          onChange={event => onConfirm(event.target.checked)}
+        />
+        <Txt>I checked the auto-filled details and they are correct.</Txt>
+      </label>
+    </div>
+  )
+}
+
 function PhotoStep({
   photo,
   preparing,
@@ -772,7 +896,7 @@ function PhotoStep({
   return (
     <>
       <p className="text-[15px] text-muted-foreground">
-        <Txt>Take a clear photo. The AI fills in the details for you, and you can change anything.</Txt>
+        <Txt>Take a clear photo. The AI fills in the details to help you; check them and change anything wrong.</Txt>
       </p>
       {preview && (
         <m.img
