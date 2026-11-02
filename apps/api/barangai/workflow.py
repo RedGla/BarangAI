@@ -56,7 +56,7 @@ def change_status(report_id: str, body: StatusInput, db: Session = Depends(get_d
     cases.after_status_change(db, report, user.id)
     db.commit()
     db.expire_all()
-    return serialize_report(db.get(Report, report_id), detail=True)
+    return serialize_report(db.get(Report, report_id), detail=True, staff=True)
 
 
 @router.post("/{report_id}/actions", status_code=201)

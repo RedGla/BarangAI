@@ -32,14 +32,47 @@ class LoginCredentials(BaseModel):
     password: str
 
 
+PREFERENCES = {"theme": ("system", "light", "dark"), "language": ("en", "fil")}
+
+
+class PreferencesInput(BaseModel):
+    theme: str | None = None
+    language: str | None = None
+
+
 def user_data(user):
-    return {"id": user.id, "email": user.email, "role": user.role}
+    saved = user.preferences if isinstance(user.preferences, dict) else {}
+    preferences = {key: saved[key] for key, allowed in PREFERENCES.items() if saved.get(key) in allowed}
+    return {"id": user.id, "email": user.email, "role": user.role, "preferences": preferences}
 
 
-def rate_limit(request, action, count=10):
-    key = (action, request.client.host if request.client else "unknown")
-    bucket = attempts[key]
+def client_ip(request):
+    """The caller's address. Behind a proxy (Render) the socket peer is the proxy itself, shared by everyone.
+
+    Set TRUSTED_PROXY_HOPS to the number of proxies that append to X-Forwarded-For in front of the app, and the
+    address the outermost one recorded is used. Entries left of it are client-supplied and never trusted (unlike
+    uvicorn's --forwarded-allow-ips="*", which takes the leftmost, spoofable entry).
+    """
+    try:
+        hops = int(os.environ.get("TRUSTED_PROXY_HOPS", "0") or 0)
+    except ValueError:
+        hops = 0
+    forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+    if hops > 0 and len(forwarded) >= hops:
+        return forwarded[-hops]
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit(request, action, count=10, key=None):
+    """At most `count` calls a minute per caller. Pass `key` (a user id or email) for signed-in actions, so residents
+    sharing one network address (a proxy, school Wi-Fi) do not use up each other's allowance. In memory: a restart
+    clears it, so lasting limits (reports per day) are counted in the database instead."""
+    bucket_key = (action, key or client_ip(request))
     current = time.monotonic()
+    if len(attempts) > 10_000:
+        for stale in [name for name, items in attempts.items() if not items or items[-1] < current - 60]:
+            del attempts[stale]
+    bucket = attempts[bucket_key]
     while bucket and bucket[0] < current - 60:
         bucket.popleft()
     if len(bucket) >= count:
@@ -97,7 +130,7 @@ def require_csrf(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/register", status_code=201)
 def register(credentials: Credentials, request: Request, response: Response, db: Session = Depends(get_db)):
-    rate_limit(request, "register")
+    rate_limit(request, "register", 20)
     if any(key.strip().casefold() == "role" for key in credentials.model_extra or {}):
         raise HTTPException(403, "Role cannot be selected")
     email = credentials.email.lower()
@@ -113,7 +146,13 @@ def register(credentials: Credentials, request: Request, response: Response, db:
 
 @router.post("/login")
 def login(credentials: LoginCredentials, request: Request, response: Response, db: Session = Depends(get_db)):
-    rate_limit(request, "login")
+    # Password guessing is limited per account and address, so a stranger guessing elsewhere cannot lock the owner
+    # out; a looser per-account cap stops guessing spread over many addresses, and a per-address cap stops one
+    # machine trying many accounts. (On Render all callers share an address until TRUSTED_PROXY_HOPS is set.)
+    email = credentials.email.strip().lower()[:320]
+    rate_limit(request, "login", key=f"{email}|{client_ip(request)}")
+    rate_limit(request, "login_account", 50, key=email)
+    rate_limit(request, "login_address", 60)
     user = db.scalar(select(User).where(User.email == credentials.email.lower()))
     try:
         valid = bool(user and hasher.verify(user.password_hash, credentials.password))
@@ -127,6 +166,19 @@ def login(credentials: LoginCredentials, request: Request, response: Response, d
 
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
+    return user_data(user)
+
+
+@router.put("/preferences")
+def save_preferences(body: PreferencesInput, db: Session = Depends(get_db), user: User = Depends(require_csrf)):
+    """Appearance and language for this account, so they follow the person to another phone or computer."""
+    saved = dict(user.preferences) if isinstance(user.preferences, dict) else {}
+    for key, value in body.model_dump(exclude_none=True).items():
+        if value not in PREFERENCES[key]:
+            raise HTTPException(422, "Unsupported preference")
+        saved[key] = value
+    user.preferences = saved
+    db.commit()
     return user_data(user)
 
 

@@ -11,16 +11,16 @@ import math
 import os
 from datetime import UTC, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .auth import get_current_user, require_csrf, require_role
+from .auth import get_current_user, rate_limit, require_csrf, require_role
 from .db import get_db
 from .duplicates import candidate_score
 from .models import Case, DuplicateSuggestion, Notification, Report, ReportEvent, StaffAction, User, now, utc_iso
-from .reports import authorized_report
+from .reports import authorized_report, serialize_report
 
 router = APIRouter()
 PATH = ("Pending", "Under Verification", "Accepted", "In Progress", "Resolved")
@@ -33,6 +33,13 @@ OPEN_FOR_EVIDENCE = ("Accepted", "In Progress")
 MANILA = timezone(timedelta(hours=8))
 RADIUS_M = {"broken_streetlights": 50, "damaged_signage": 50, "exposed_wiring": 50, "potholes": 50,
             "fallen_trees": 100, "uncollected_garbage": 100, "flooding": 300, "other": 300}
+# Categories two residents may pick for one incident: garbage clogging a drain floods the street; a fallen tree
+# brings down wires and lights. Such pairs are suggested too, with a lower score, and staff still decide.
+RELATED = {"flooding": {"uncollected_garbage"}, "uncollected_garbage": {"flooding"},
+           "fallen_trees": {"exposed_wiring", "broken_streetlights"},
+           "exposed_wiring": {"fallen_trees", "broken_streetlights"},
+           "broken_streetlights": {"fallen_trees", "exposed_wiring"}}
+RELATED_SCORE = 0.9
 
 
 def distance_m(lat_a, lon_a, lat_b, lon_b):
@@ -57,9 +64,15 @@ def suggest_duplicates(db: Session, report: Report):
     for candidate in nearby:
         if distance_m(report.latitude, report.longitude, candidate.latitude, candidate.longitude) > radius:
             continue
+        other = candidate.verified_category or candidate.resident_category
+        related = other in RELATED.get(report.resident_category, ())
+        # candidate_score (frozen duplicates.py) only compares like with like, so a related pair is scored as one
+        # category and then marked down.
         score = candidate_score(report.resident_category, report.latitude, report.longitude, report.image_embedding,
-                                candidate.verified_category or candidate.resident_category,
+                                report.resident_category if related else other,
                                 candidate.latitude, candidate.longitude, candidate.image_embedding)
+        if score is not None and related:
+            score = round(score * RELATED_SCORE, 4)
         if score is not None:
             db.add(DuplicateSuggestion(report_id=report.id, candidate_report_id=candidate.id,
                                        model_version=version, score=score, decision="pending"))
@@ -302,3 +315,42 @@ def community_map(db: Session = Depends(get_db), user: User = Depends(get_curren
 def day(value):
     value = value if value.tzinfo else value.replace(tzinfo=UTC)
     return value.astimezone(MANILA).date().isoformat()
+
+
+# How far back a resident's own open report still counts as "already reported".
+OWN_REPORT_DAYS = 30
+
+
+@router.get("/nearby")
+def nearby(request: Request, category: str, latitude: float = Query(..., ge=-90, le=90),
+           longitude: float = Query(..., ge=-180, le=180), db: Session = Depends(get_db),
+           user: User = Depends(get_current_user)):
+    """Before submitting: the resident's own open reports of this issue, and neighbours' open accepted cases.
+
+    Same or related category within the category's search radius. Only the resident's own reports and the already
+    public map cases are returned, so nothing private about other residents is revealed.
+    """
+    require_role(user, {"resident"})
+    rate_limit(request, "nearby", 60, key=user.id)
+    if category not in RADIUS_M:
+        raise HTTPException(422, "Invalid location or category")
+    wanted = {category} | RELATED.get(category, set())
+    radius = max(RADIUS_M[category], *(RADIUS_M[name] for name in wanted))
+    since = now() - timedelta(days=OWN_REPORT_DAYS)
+    own = []
+    for report in db.scalars(select(Report).where(
+            Report.resident_id == user.id, Report.status.not_in(("Resolved", "Rejected")), Report.created_at >= since)
+            .order_by(Report.created_at.desc())):
+        if (report.verified_category or report.resident_category) not in wanted:
+            continue
+        apart = distance_m(latitude, longitude, report.latitude, report.longitude)
+        if apart <= radius:
+            own.append({**serialize_report(report), "distance_m": round(apart)})
+    cases = []
+    for item in community_map(db, user):
+        if item["category"] not in wanted or not item["open_for_evidence"] or item["contributed"]:
+            continue
+        apart = distance_m(latitude, longitude, item["latitude"], item["longitude"])
+        if apart <= radius:
+            cases.append({**item, "distance_m": round(apart)})
+    return {"own": own[:3], "cases": sorted(cases, key=lambda item: item["distance_m"])[:3]}

@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, post } from '../../lib/api'
 
-export type User = { id: string; email: string; role: 'resident' | 'staff' | 'administrator' }
+export type Preferences = { theme?: 'system' | 'light' | 'dark'; language?: 'en' | 'fil' }
+export type User = {
+  id: string
+  email: string
+  role: 'resident' | 'staff' | 'administrator'
+  /** Saved on the account so they follow the person to another device. */
+  preferences?: Preferences
+}
 
 const meKey = ['me'] as const
 export const isStaff = (user: User) => user.role === 'staff' || user.role === 'administrator'

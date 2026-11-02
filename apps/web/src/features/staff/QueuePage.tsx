@@ -14,6 +14,7 @@ import { ReportHeading, ReportView } from '../reports/ReportDetail'
 import { groupCases } from '../reports/grouping'
 import { useReport, useReports } from '../reports/queries'
 import { PriorityChip } from '../reports/Priority'
+import { TrustChip } from '../reports/Trust'
 import { StatusBadge } from '../reports/StatusBadge'
 
 /** Review queue as a split view; filters live in the URL so a reviewed report returns to the same list. */
@@ -160,6 +161,7 @@ export function QueuePage() {
                   <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <StatusBadge status={report.status} />
                     {report.priority && report.priority.level !== 'low' && <PriorityChip priority={report.priority} />}
+                    {report.trust_flags && <TrustChip flags={report.trust_flags} />}
                     {grouped.sizeOf(report) > 1 && (
                       <span className="inline-flex h-6 items-center gap-1 rounded-full bg-tint px-2 text-[12.5px] font-semibold text-primary">
                         <Layers className="size-3.5" aria-hidden="true" />

@@ -4,13 +4,19 @@ from sqlalchemy.orm import Session
 
 from .auth import get_current_user, require_csrf
 from .db import get_db
-from .models import Notification, User, now, utc_iso
+from .models import Notification, Report, User, now, utc_iso
 
 router = APIRouter(prefix="/notifications")
 
 
+def notify_staff(db: Session, report: Report, kind: str):
+    """Tell every staff member and administrator that a report arrived or a resident added to one."""
+    for staff_id in db.scalars(select(User.id).where(User.role.in_(("staff", "administrator")))):
+        db.add(Notification(user_id=staff_id, report_id=report.id, status=report.status, kind=kind))
+
+
 def serialize(item: Notification):
-    return {"id": item.id, "report_id": item.report_id, "status": item.status,
+    return {"id": item.id, "report_id": item.report_id, "status": item.status, "kind": item.kind,
             "created_at": utc_iso(item.created_at), "read_at": utc_iso(item.read_at) if item.read_at else None}
 
 

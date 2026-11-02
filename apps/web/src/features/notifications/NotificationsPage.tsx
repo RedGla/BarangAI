@@ -12,7 +12,15 @@ import { useReports } from '../reports/queries'
 import { StatusBadge } from '../reports/StatusBadge'
 import type { Status } from '../reports/types'
 
-export type Notice = { id: string; report_id: string; status: Status; created_at: string; read_at: string | null }
+export type Notice = {
+  id: string
+  report_id: string
+  status: Status
+  /** "status" for residents; "new_report" and "addendum" tell staff something arrived. */
+  kind?: 'status' | 'new_report' | 'addendum'
+  created_at: string
+  read_at: string | null
+}
 const noticeKey = ['notifications'] as const
 
 /** Refetches when the resident returns to the tab (Query's focus refetch), as status changes arrive. */
@@ -20,7 +28,7 @@ export function useNotifications() {
   return useQuery({ queryKey: noticeKey, queryFn: () => api<Notice[]>('/notifications') })
 }
 
-function useMarkRead() {
+export function useMarkRead() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => post<Notice>(`/notifications/${id}/read`),

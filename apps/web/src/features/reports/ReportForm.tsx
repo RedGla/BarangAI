@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, m } from 'motion/react'
 import {
   Camera,
@@ -23,6 +24,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Kap, kapAvailable } from '@/components/Kap'
+import { DateText } from '@/components/DateText'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Alert, LargeTitle } from '@/components/page'
 import { cn } from '@/lib/utils'
 import { post } from '../../lib/api'
@@ -33,9 +36,9 @@ import { CategoryTile } from './CategoryIcon'
 import { describePrompts, toggleAnswer } from './describe'
 import { MapPicker } from './MapPicker'
 import { photoCoordinates, useStreetName, type LocationSource } from './location'
-import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES } from './photo'
-import { useCommunityCases, useSubmitReport } from './queries'
-import type { Category, Prediction, Report } from './types'
+import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES, photoDetails, type PhotoDetails } from './photo'
+import { findNearby, reportKeys, useCommunityCases, useSubmitReport } from './queries'
+import type { Category, Nearby, Prediction, Report } from './types'
 
 const UNAVAILABLE: Prediction = { prediction_available: false, model_category: null, confidence: null }
 const NOT_FILLED = { category: false, description: false }
@@ -87,6 +90,15 @@ export function ReportForm() {
   // The latest photo pick; a slower shrink of an earlier pick must not replace it.
   const pickId = useRef(0)
   const [preparing, setPreparing] = useState(false)
+  // Read from the original photo before shrinking drops them; staff use them to check the pin and date.
+  const [details, setDetails] = useState<PhotoDetails | null>(null)
+  const [photoGps, setPhotoGps] = useState<[number, number] | null>(null)
+  // "You already reported this": the resident's own open report or a neighbours' case near the pin.
+  const [nearby, setNearby] = useState<Nearby | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { language } = useLanguage()
   const streetName = useStreetName(latitude, longitude)
   // "I see this too" from the community map: this report is offered to staff as evidence for that case.
@@ -173,6 +185,9 @@ export function ReportForm() {
       return
     }
     setPreparing(true)
+    setDetails(null)
+    setPhotoGps(null)
+    void photoDetails(file).then(found => pick === pickId.current && setDetails(found))
     // Shrink before upload to save data and storage; GPS is read from the original below, before it is lost.
     void compressPhoto(file).then(small => {
       if (pick !== pickId.current) return
@@ -186,6 +201,7 @@ export function ReportForm() {
     // Location without typing: the photo's own GPS first, then the phone's, quietly (the pin can still move).
     void photoCoordinates(file).then(coordinates => {
       if (pick !== pickId.current) return
+      setPhotoGps(coordinates)
       if (coordinates) {
         setLatitude(String(coordinates[0]))
         setLongitude(String(coordinates[1]))
@@ -233,7 +249,7 @@ export function ReportForm() {
       { enableHighAccuracy: true, timeout: 10000 },
     )
   }
-  function submit() {
+  async function submit() {
     if (!photo || !category) {
       setError('Add a photo and category.')
       return
@@ -243,13 +259,35 @@ export function ReportForm() {
       return
     }
     if (autoFilled && !confirmed) return
+    if (!joining) {
+      // Ask first if this looks like something already reported; a failed check never blocks the report.
+      setChecking(true)
+      const found = await findNearby(category, latitude, longitude).catch(() => null)
+      setChecking(false)
+      if ((found?.own?.length ?? 0) > 0 || (found?.cases?.length ?? 0) > 0) {
+        setNearby(found)
+        return
+      }
+    }
+    send()
+  }
+  function send(caseId = joining?.id) {
+    if (!photo || !category) return
+    setNearby(null)
     const form = new FormData()
     form.set('image', photo)
     form.set('resident_category', category)
     form.set('latitude', latitude)
     form.set('longitude', longitude)
     if (description.trim()) form.set('description', description.trim())
-    if (joining) form.set('case_id', joining.id)
+    if (caseId) form.set('case_id', caseId)
+    if (locationSource) form.set('location_source', locationSource)
+    if (details?.takenAt) form.set('photo_taken_at', details.takenAt)
+    if (details?.camera) form.set('photo_camera', '1')
+    if (photoGps) {
+      form.set('photo_latitude', String(photoGps[0]))
+      form.set('photo_longitude', String(photoGps[1]))
+    }
     submitReport.mutate(form, {
       onSuccess: report => {
         navigator.vibrate?.(25)
@@ -258,8 +296,29 @@ export function ReportForm() {
       onError: caught => setError(caught.message),
     })
   }
+  /** Adds this photo and note to the resident's own open report instead of opening a second one. */
+  async function addToOwn(reportId: string) {
+    if (!photo) return
+    const form = new FormData()
+    form.set('note', description.trim() || t('Another photo of the same problem.'))
+    form.set('image', photo)
+    setAdding(true)
+    try {
+      await post(`/reports/${reportId}/addenda`, form)
+      await queryClient.invalidateQueries({ queryKey: reportKeys.all })
+      setNearby(null)
+      navigate(`/reports/${reportId}`)
+    } catch (caught) {
+      setNearby(null)
+      setError(caught instanceof Error ? caught.message : 'Request failed')
+    } finally {
+      setAdding(false)
+    }
+  }
   function startOver() {
     setParams({}, { replace: true })
+    setDetails(null)
+    setPhotoGps(null)
     setSubmitted(null)
     setPhoto(null)
     setPreview('')
@@ -665,15 +724,23 @@ export function ReportForm() {
                 size="lg"
                 className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
                 type="button"
-                disabled={submitReport.isPending || (autoFilled && !confirmed)}
-                onClick={submit}
+                disabled={submitReport.isPending || checking || (autoFilled && !confirmed)}
+                onClick={() => void submit()}
               >
-                {submitReport.isPending && <LoaderCircle className="animate-spin" />}
-                <Txt>{submitReport.isPending ? 'Submitting…' : 'Submit report'}</Txt>
+                {(submitReport.isPending || checking) && <LoaderCircle className="animate-spin" />}
+                <Txt>{submitReport.isPending || checking ? 'Submitting…' : 'Submit report'}</Txt>
               </Button>
             )}
           </div>
         </div>
+        <NearbySheet
+          nearby={nearby}
+          adding={adding}
+          onClose={() => setNearby(null)}
+          onAddToOwn={reportId => void addToOwn(reportId)}
+          onJoinCase={caseId => send(caseId)}
+          onSubmitAnyway={() => send()}
+        />
         <Summary
           step={step}
           preview={preview}
@@ -1102,5 +1169,89 @@ function SuccessView({ report, onAnother }: { report: Report; onAnother: () => v
         </Button>
       </div>
     </div>
+  )
+}
+
+/** "You already reported this": offered before a second report of the same issue is sent. */
+function NearbySheet({
+  nearby,
+  adding,
+  onClose,
+  onAddToOwn,
+  onJoinCase,
+  onSubmitAnyway,
+}: {
+  nearby: Nearby | null
+  adding: boolean
+  onClose: () => void
+  onAddToOwn: (reportId: string) => void
+  onJoinCase: (caseId: string) => void
+  onSubmitAnyway: () => void
+}) {
+  const t = useText()
+  const own = nearby?.own[0]
+  const shared = own ? undefined : nearby?.cases[0]
+  return (
+    <Sheet open={Boolean(nearby)} onOpenChange={open => !open && onClose()}>
+      <SheetContent
+        side="bottom"
+        className="mx-auto max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
+        <SheetHeader className="items-center px-5 pt-6 text-center">
+          {kapAvailable('thinking') && <Kap pose="thinking" className="mb-1 h-24 w-auto" />}
+          <SheetTitle className="text-[20px] font-bold">
+            <Txt>{own ? 'You already reported this' : 'Neighbours already reported this'}</Txt>
+          </SheetTitle>
+          <SheetDescription className="text-[15px]">
+            <Txt>
+              {own
+                ? 'Your open report is close to this pin. Add this photo and note to it so staff see everything in one place.'
+                : 'Barangay staff are already working on an issue close to this pin. Add your photo to it as evidence.'}
+            </Txt>
+          </SheetDescription>
+        </SheetHeader>
+        {(own || shared) && (
+          <div className="mx-5 flex items-center gap-3 rounded-2xl bg-muted/60 p-3.5">
+            <CategoryTile category={(own?.resident_category ?? shared?.category)!} />
+            <div className="min-w-0 flex-1 text-[14px]">
+              <strong className="block truncate text-[15px] font-semibold">
+                <Txt>{label(own?.resident_category ?? shared?.category ?? null)}</Txt>
+              </strong>
+              <span className="block text-muted-foreground">
+                {own ? (
+                  <>
+                    #{own.id.slice(0, 8).toUpperCase()} ·{' '}
+                    {own.created_at && <DateText value={own.created_at} compact />}
+                  </>
+                ) : (
+                  <>
+                    {shared?.location_label ?? ''} {shared?.contributors ?? 0} {t('residents')}
+                  </>
+                )}
+                {' · '}
+                {own?.distance_m ?? shared?.distance_m} m {t('away')}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col gap-2.5 px-5 pt-2">
+          {own && (
+            <Button size="lg" disabled={adding} onClick={() => onAddToOwn(own.id)}>
+              {adding && <LoaderCircle className="animate-spin" />}
+              <Txt>Add to my report</Txt>
+            </Button>
+          )}
+          {shared && (
+            <Button size="lg" onClick={() => onJoinCase(shared.id)}>
+              <Users />
+              <Txt>Add my photo to this issue</Txt>
+            </Button>
+          )}
+          <Button size="lg" variant="secondary" disabled={adding} onClick={onSubmitAnyway}>
+            <Txt>It is a different problem. Send a new report</Txt>
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

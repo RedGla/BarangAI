@@ -137,6 +137,7 @@ describe('resident reporting', () => {
       next()
       fireEvent.click(await screen.findByRole('radio', { name: 'Potholes' }))
       next()
+      // Nothing here was auto-filled (typed pin, chosen category), so no confirmation is asked for.
       fireEvent.click(await screen.findByRole('button', { name: /submit report/i }))
       await waitFor(() =>
         expect(requests.some(request => request.init?.method === 'POST' && request.url.endsWith('/reports'))).toBe(

@@ -9,7 +9,8 @@ class ReportBodyLimitMiddleware:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "").removeprefix(scope.get("root_path", ""))
-        if scope["type"] != "http" or scope["method"] != "POST" or path not in {"/reports", "/reports/predict"}:
+        if scope["type"] != "http" or scope["method"] != "POST" or not (
+            path in {"/reports", "/reports/predict"} or (path.startswith("/reports/") and path.endswith("/addenda"))):
             return await self.app(scope, receive, send)
         limit = int(os.environ.get("MAX_REQUEST_BYTES", int(os.environ.get("MAX_IMAGE_BYTES", 5_000_000)) + 1_000_000))
         headers = dict(scope["headers"])

@@ -7,6 +7,7 @@ import { ApiError } from '../lib/api'
 import { LanguageProvider, Txt } from '../lib/i18n'
 import { AuthPage } from '../features/auth/AuthPage'
 import { isStaff, useMe } from '../features/auth/queries'
+import { PreferenceSync } from '../features/account/PreferenceSync'
 import { NotificationsPage } from '../features/notifications/NotificationsPage'
 import { HomePage } from '../features/home/HomePage'
 import { ReportForm } from '../features/reports/ReportForm'
@@ -23,6 +24,9 @@ const OverviewPage = lazy(() =>
   import('../features/staff/OverviewPage').then(module => ({ default: module.OverviewPage })),
 )
 const QueuePage = lazy(() => import('../features/staff/QueuePage').then(module => ({ default: module.QueuePage })))
+const UpdatesPage = lazy(() =>
+  import('../features/staff/UpdatesPage').then(module => ({ default: module.UpdatesPage })),
+)
 const MapPage = lazy(() => import('../features/staff/MapPage').then(module => ({ default: module.MapPage })))
 const CommunityPage = lazy(() =>
   import('../features/community/CommunityPage').then(module => ({ default: module.CommunityPage })),
@@ -63,34 +67,38 @@ function AppRoutes() {
     )
   if (!me.data) return <AuthPage />
   return (
-    <Routes>
-      {isStaff(me.data) ? (
-        <Route
-          element={
-            <Lazy>
-              <StaffShell user={me.data} />
-            </Lazy>
-          }
-        >
-          <Route path="desk" element={<OverviewPage />} />
-          <Route path="desk/reports" element={<QueuePage />} />
-          <Route path="desk/reports/:id" element={<QueuePage />} />
-          <Route path="desk/map" element={<MapPage />} />
-          <Route path="*" element={<Navigate to="/desk" replace />} />
-        </Route>
-      ) : (
-        <Route element={<ResidentShell user={me.data} />}>
-          <Route path="home" element={<HomePage />} />
-          <Route path="report" element={<ReportForm />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="reports/:id" element={<ReportsPage />} />
-          <Route path="community" element={<CommunityPage />} />
-          <Route path="updates" element={<NotificationsPage />} />
-          <Route path="help" element={<ChatPage />} />
-          <Route path="*" element={<Navigate to="/home" replace />} />
-        </Route>
-      )}
-    </Routes>
+    <>
+      <PreferenceSync user={me.data} />
+      <Routes>
+        {isStaff(me.data) ? (
+          <Route
+            element={
+              <Lazy>
+                <StaffShell user={me.data} />
+              </Lazy>
+            }
+          >
+            <Route path="desk" element={<OverviewPage />} />
+            <Route path="desk/reports" element={<QueuePage />} />
+            <Route path="desk/reports/:id" element={<QueuePage />} />
+            <Route path="desk/map" element={<MapPage />} />
+            <Route path="desk/updates" element={<UpdatesPage />} />
+            <Route path="*" element={<Navigate to="/desk" replace />} />
+          </Route>
+        ) : (
+          <Route element={<ResidentShell user={me.data} />}>
+            <Route path="home" element={<HomePage />} />
+            <Route path="report" element={<ReportForm />} />
+            <Route path="reports" element={<ReportsPage />} />
+            <Route path="reports/:id" element={<ReportsPage />} />
+            <Route path="community" element={<CommunityPage />} />
+            <Route path="updates" element={<NotificationsPage />} />
+            <Route path="help" element={<ChatPage />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Route>
+        )}
+      </Routes>
+    </>
   )
 }
 

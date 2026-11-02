@@ -77,3 +77,18 @@ export async function compressPhoto(file: File): Promise<File> {
     bitmap?.close()
   }
 }
+
+/** Capture time and camera from the original file. Shrinking drops them, so the form sends them alongside. */
+export type PhotoDetails = { takenAt: string | null; camera: boolean }
+
+export async function photoDetails(file: File): Promise<PhotoDetails> {
+  try {
+    const { default: exifr } = await import('exifr')
+    // reviveValues: false keeps the raw "YYYY:MM:DD HH:MM:SS" camera time, which the API reads as Philippine time.
+    const tags = await exifr.parse(file, { pick: ['DateTimeOriginal', 'Make', 'Model'], reviveValues: false })
+    const taken = typeof tags?.DateTimeOriginal === 'string' ? tags.DateTimeOriginal : null
+    return { takenAt: taken, camera: Boolean(tags?.Make || tags?.Model) }
+  } catch {
+    return { takenAt: null, camera: false }
+  }
+}

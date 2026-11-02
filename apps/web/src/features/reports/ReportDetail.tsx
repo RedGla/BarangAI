@@ -1,6 +1,16 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { ImageOff, Layers, MapPin, Sparkles, TriangleAlert, Users } from 'lucide-react'
+import {
+  ImagePlus,
+  ImageOff,
+  Layers,
+  LoaderCircle,
+  MapPin,
+  MessageSquarePlus,
+  Sparkles,
+  TriangleAlert,
+  Users,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,7 +21,9 @@ import { cn } from '@/lib/utils'
 import { Txt, useText } from '../../lib/i18n'
 import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
+import { compressPhoto } from './photo'
 import { PriorityPanel } from './Priority'
+import { TrustPanel } from './Trust'
 import { STATUS_STYLE, StatusBadge } from './StatusBadge'
 import {
   useCaseDecision,
@@ -20,6 +32,7 @@ import {
   useDuplicates,
   useGenerateDuplicates,
   useLinkReports,
+  useAddDetails,
   useLogAction,
   useReport,
   useReportCase,
@@ -109,6 +122,9 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
       )}
       {detail && !staff && detail.case_id && <ResidentCaseNote id={id} />}
       {detail && <ReportFacts detail={detail} />}
+      {detail && !staff && !report.isPlaceholderData && !['Resolved', 'Rejected'].includes(detail.status) && (
+        <AddDetails key={detail.id} id={detail.id} />
+      )}
     </>
   )
   return (
@@ -122,6 +138,7 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
             <StatusControls key={detail.id} detail={detail} />
           )}
           {detail?.priority && !report.isPlaceholderData && <PriorityPanel priority={detail.priority} />}
+          {detail?.trust_flags && !report.isPlaceholderData && <TrustPanel report={detail} />}
           {detail?.case_id && <CasePanel id={id} />}
           <ActionForm id={id} />
           <DuplicateReview id={id} />
@@ -195,6 +212,27 @@ function ReportFacts({ detail }: { detail: Report }) {
               </span>
             </p>
           )}
+        </Panel>
+      )}
+      {detail.addenda && detail.addenda.length > 0 && (
+        <Panel title="Added later by the resident">
+          <ol className="space-y-3">
+            {detail.addenda.map(item => (
+              <li key={item.id} className="border-t pt-3 first:border-t-0 first:pt-0">
+                <small className="text-[13px] text-muted-foreground">
+                  <DateText value={item.created_at} />
+                </small>
+                <p className="mt-1 text-[15px] break-words">{item.note}</p>
+                {item.image_url && (
+                  <img
+                    className="hairline mt-2 aspect-[4/3] w-full max-w-sm rounded-xl bg-muted object-cover"
+                    src={item.image_url}
+                    alt={t('Photo added later')}
+                  />
+                )}
+              </li>
+            ))}
+          </ol>
         </Panel>
       )}
       <Panel title="Status history">
@@ -561,6 +599,91 @@ function CasePanel({ id }: { id: string }) {
           <Txt>{(decide.error ?? info.error)!.message}</Txt>
         </Alert>
       )}
+    </Panel>
+  )
+}
+
+/** Resident: add a note (and optionally another photo) to their own open report. The original never changes. */
+function AddDetails({ id }: { id: string }) {
+  const t = useText()
+  const add = useAddDetails(id)
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  const [photo, setPhoto] = useState<File | null>(null)
+  const [done, setDone] = useState(false)
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!note.trim()) return
+    const form = new FormData()
+    form.set('note', note.trim())
+    if (photo) form.set('image', photo)
+    add.mutate(form, {
+      onSuccess: () => {
+        setNote('')
+        setPhoto(null)
+        setOpen(false)
+        setDone(true)
+      },
+    })
+  }
+  if (!open)
+    return (
+      <div className="space-y-2">
+        {done && (
+          <p role="status" className="text-[14px] text-[var(--status-resolved)]">
+            <Txt>Added. Barangay staff were notified.</Txt>
+          </p>
+        )}
+        <Button variant="secondary" className="w-full" onClick={() => setOpen(true)}>
+          <MessageSquarePlus />
+          <Txt>Add details</Txt>
+        </Button>
+      </div>
+    )
+  return (
+    <Panel title="Add details">
+      <form className="space-y-3" onSubmit={submit}>
+        <p className="text-[14px] text-muted-foreground">
+          <Txt>Your first report stays as it is. Staff see what you add, with the time you added it.</Txt>
+        </p>
+        <Textarea
+          id="addendum-note"
+          value={note}
+          maxLength={1000}
+          rows={3}
+          placeholder={t('What changed? For example: the water is higher now.')}
+          onChange={event => setNote(event.target.value)}
+        />
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-[15px] font-medium text-primary">
+          <ImagePlus className="size-5" aria-hidden="true" />
+          <span className="truncate">{photo ? photo.name : t('Add a photo (optional)')}</span>
+          <input
+            id="addendum-photo"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            onChange={event => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) void compressPhoto(file).then(setPhoto)
+            }}
+          />
+        </label>
+        {add.error && (
+          <Alert>
+            <Txt>{add.error.message}</Txt>
+          </Alert>
+        )}
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+            <Txt>Cancel</Txt>
+          </Button>
+          <Button type="submit" className="flex-1" disabled={!note.trim() || add.isPending}>
+            {add.isPending && <LoaderCircle className="animate-spin" />}
+            <Txt>Send to staff</Txt>
+          </Button>
+        </div>
+      </form>
     </Panel>
   )
 }

@@ -1,3 +1,4 @@
+import mimetypes
 import os
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .auth import attempts
 from .auth import router as auth_router
 from .body_limit import ReportBodyLimitMiddleware
+from .brief import router as brief_router
 from .cases import router as cases_router
 from .chat import router as chat_router
 from .checker import validate_configured_checker
@@ -38,6 +40,7 @@ def create_app():
     app.include_router(cases_router)
     app.include_router(notifications_router)
     app.include_router(geo_router)
+    app.include_router(brief_router)
     app.add_middleware(ReportBodyLimitMiddleware)
 
     @app.get("/health", include_in_schema=False)
@@ -45,6 +48,10 @@ def create_app():
         return {"status": "ok"}
 
     return app
+
+
+# The installable-app manifest (apps/web/public); Python's table does not always know this type.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 class SiteFiles(StaticFiles):
