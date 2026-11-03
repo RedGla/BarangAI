@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import type { Map as LeafletMap } from 'leaflet'
 import { cn } from '@/lib/utils'
 import { useTheme } from '../../lib/theme'
 import { useText } from '../../lib/i18n'
+import { useBoundaryLayer } from '../reports/boundaries'
 import { label } from '../reports/categories'
 import { BARANGAY_CENTER } from '../reports/MapPicker'
 import { STATUS_STYLE } from '../reports/StatusBadge'
@@ -23,6 +25,8 @@ export function StaffMap<T extends Pin>({
   const t = useText()
   const { dark } = useTheme()
   const [element, setElement] = useState<HTMLDivElement | null>(null)
+  const [leaflet, setLeaflet] = useState<LeafletMap | null>(null)
+  useBoundaryLayer(leaflet)
   useEffect(() => {
     if (!element) return
     let alive = true
@@ -64,7 +68,9 @@ export function StaffMap<T extends Pin>({
           points.map(report => [report.latitude!, report.longitude!] as [number, number]),
           { padding: [28, 28], maxZoom: 16, animate: false },
         )
+      setLeaflet(map)
       dispose = () => {
+        setLeaflet(null)
         map.stop()
         map.remove()
       }

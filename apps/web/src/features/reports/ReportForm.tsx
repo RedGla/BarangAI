@@ -35,7 +35,7 @@ import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
 import { describePrompts, toggleAnswer } from './describe'
 import { MapPicker } from './MapPicker'
-import { photoCoordinates, useStreetName, type LocationSource } from './location'
+import { photoCoordinates, useBarangayAt, useStreetName, type LocationSource } from './location'
 import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES, photoDetails, type PhotoDetails } from './photo'
 import { findNearby, reportKeys, useCommunityCases, useSubmitReport } from './queries'
 import type { Category, Nearby, Prediction, Report } from './types'
@@ -101,6 +101,7 @@ export function ReportForm() {
   const queryClient = useQueryClient()
   const { language } = useLanguage()
   const streetName = useStreetName(latitude, longitude)
+  const place = useBarangayAt(latitude, longitude)
   // "I see this too" from the community map: this report is offered to staff as evidence for that case.
   const [params, setParams] = useSearchParams()
   const caseId = params.get('case')
@@ -461,8 +462,25 @@ export function ReportForm() {
                               {streetName && ` · ${coordinates}`}
                             </span>
                           )}
+                          {place?.barangay && (
+                            <span className="block text-[13px] font-normal opacity-80">
+                              <Txt>Barangay</Txt> {place.barangay}
+                            </span>
+                          )}
                         </span>
                       </m.p>
+                    )}
+                    {located && place?.active && !place.barangay && (
+                      <p
+                        role="status"
+                        className="flex items-start gap-2 rounded-xl bg-[color-mix(in_oklab,var(--status-pending)_14%,transparent)] px-3 py-2.5 text-[14px] text-[var(--status-pending)]"
+                      >
+                        <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                        <Txt>
+                          This pin is outside the area we cover. You can still send it, and an administrator will review
+                          it.
+                        </Txt>
+                      </p>
                     )}
                   </Card>
                   {showMap && (

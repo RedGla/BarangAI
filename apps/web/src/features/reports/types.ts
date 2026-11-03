@@ -37,6 +37,8 @@ export type Report = {
   case_confirmed?: boolean
   /** Staff only; null once closed. */
   priority?: Priority | null
+  /** Staff only: placed by the server from the pin. Null when the pin is outside every boundary. */
+  barangay?: string | null
   /** Where the pin came from, as the resident's form reported it. */
   location_source?: 'photo' | 'device' | 'manual' | null
   /** Staff only: checks of the photo against the pin and date. Signals to look closer, never proof. */

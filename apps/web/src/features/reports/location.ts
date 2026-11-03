@@ -22,6 +22,30 @@ export async function photoCoordinates(file: File): Promise<[number, number] | n
   }
 }
 
+/** Which barangay the pin falls in, as a preview; the server works it out again on submit. Null while unknown. */
+export function useBarangayAt(latitude: string, longitude: string) {
+  const [place, setPlace] = useState<{ active: boolean; barangay: string | null } | null>(null)
+  useEffect(() => {
+    setPlace(null)
+    const lat = Number(latitude)
+    const lng = Number(longitude)
+    if (latitude === '' || longitude === '' || !Number.isFinite(lat) || !Number.isFinite(lng)) return
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      void api<{ active: boolean; barangay: string | null }>(`/barangays/locate?lat=${lat}&lng=${lng}`, {
+        signal: controller.signal,
+      })
+        .then(setPlace)
+        .catch(() => {})
+    }, 600)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [latitude, longitude])
+  return place
+}
+
 /** Street name for the pin from the API's geocoder; null when unknown or the geocoder is off. */
 export function useStreetName(latitude: string, longitude: string) {
   const [label, setLabel] = useState<string | null>(null)

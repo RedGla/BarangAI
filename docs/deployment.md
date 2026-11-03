@@ -37,11 +37,11 @@ Local images are not copied automatically to Supabase; migrate and verify any ex
 Staff are limited to one barangay once the first barangay is loaded. Until then all staff see all reports. The load needs an administrator account, because only administrators see reports outside every boundary. Work from a trusted terminal connected to the database, inside `apps/api`, and preview first:
 
 ```bash
-python -m barangai.barangays boundaries.geojson --dry-run
+python -m barangai.barangays data/dasmarinas-barangays.geojson --dry-run
 ```
 
 ```bash
-python -m barangai.barangays boundaries.geojson
+python -m barangai.barangays data/dasmarinas-barangays.geojson
 ```
 
 ```bash
@@ -52,9 +52,13 @@ python -m barangai.bootstrap_staff staff@example.test --barangay "Barangay name"
 python -m barangai.bootstrap_staff staff@example.test --barangay "Other barangay" --assign
 ```
 
-The file is a GeoJSON Feature or FeatureCollection of Polygons or MultiPolygons, each with a `name` in `properties`. Loading a name that already exists replaces its boundary. Reports with no barangay are placed at that point; a load never moves reports that already have one.
+`apps/api/data/dasmarinas-barangays.geojson` holds the 75 barangays of Dasmariñas. Their names and codes are matched to PSGC 3Q 2026, and the shapes are NAMRIA and PSA's, from OCHA's COD-AB release of November 2023 (CC BY-IGO), through [philippines-psgc-shapefiles](https://github.com/faeldon/philippines-psgc-shapefiles) v1.0.0 (MIT). The maps credit NAMRIA, PSA and OCHA, so keep that credit. These shapes are for service areas and aren't a legal boundary. `apps/api/tools/export_boundaries.py` rebuilds the file from that release's barangay zip.
 
-**Assign existing staff straight after the first load:** until they have a barangay, they see no reports. Credit OpenStreetMap contributors (ODbL) if the boundaries come from there.
+The licence terms are in `apps/api/data/NOTICE.md`. The credit on the maps names this source, so a file from another source needs its own credit there, such as OpenStreetMap contributors (ODbL).
+
+A boundary file is a GeoJSON Feature or FeatureCollection of Polygons or MultiPolygons, each with a `name` in `properties`. Loading a name that already exists replaces its boundary. Reports with no barangay are placed at that point; a load never moves reports that already have one.
+
+**Assign existing staff straight after the first load:** until they have a barangay, they see no reports.
 
 There is no undo command yet. A wrong load needs a reviewed database change that clears `barangay_id` on `reports` and `users` and then empties `barangays`. Downgrading past migration `0009`, or rolling back to an image older than it, turns enforcement off, and all staff see all reports again.
 

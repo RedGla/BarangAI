@@ -14,15 +14,17 @@ import json
 import math
 from pathlib import Path
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import and_, false, func, or_, select, true
 from sqlalchemy.orm import Session, undefer
 
-from .auth import get_current_user
+from .auth import get_current_user, rate_limit
 from .db import get_db, session_for_url
 from .models import Barangay, DuplicateSuggestion, Report, User
 
+router = APIRouter(prefix="/barangays")
 MAX_VERTICES = 20_000
+DISPLAY_TOLERANCE = 0.00005  # About 5 m: invisible on a map, and well under half the points.
 
 
 def polygons(boundary: dict):
@@ -94,6 +96,73 @@ def active(db: Session) -> bool:
     return db.scalar(select(Barangay.id).limit(1)) is not None
 
 
+def simplified_line(points: list, tolerance: float) -> list:
+    """Douglas-Peucker: keep the ends and any point further than the tolerance from the line between kept points."""
+    keep = {0, len(points) - 1}
+    spans = [(0, len(points) - 1)]
+    while spans:
+        first, last = spans.pop()
+        (x1, y1), (x2, y2) = points[first][:2], points[last][:2]
+        length = math.hypot(x2 - x1, y2 - y1)
+        farthest, distance = None, tolerance
+        for index in range(first + 1, last):
+            x, y = points[index][:2]
+            away = abs((y2 - y1) * (x - x1) - (x2 - x1) * (y - y1)) / length if length else math.hypot(x - x1, y - y1)
+            if away > distance:
+                farthest, distance = index, away
+        if farthest is not None:
+            keep.add(farthest)
+            spans += [(first, farthest), (farthest, last)]
+    return [points[index] for index in sorted(keep)]
+
+
+def display_ring(ring: list) -> list:
+    """A lighter ring for maps only. Placing a report always uses the full boundary."""
+    start = ring[0]
+    split = max(range(len(ring)), key=lambda index: math.hypot(ring[index][0] - start[0], ring[index][1] - start[1]))
+    points = simplified_line(ring[: split + 1], DISPLAY_TOLERANCE)[:-1] + simplified_line(
+        ring[split:], DISPLAY_TOLERANCE
+    )
+    return [[round(point[0], 5), round(point[1], 5)] for point in (points if len(points) >= 4 else ring)]
+
+
+def display_boundary(boundary: dict) -> dict:
+    shapes = [[display_ring(ring) for ring in polygon] for polygon in polygons(boundary)]
+    return {"type": boundary["type"], "coordinates": shapes[0] if boundary["type"] == "Polygon" else shapes}
+
+
+@router.get("/boundaries")
+def boundaries(
+    request: Request, response: Response, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Public borders for drawing on maps; empty until barangays are loaded."""
+    rate_limit(request, "boundaries", 30, key=user.id)
+    response.headers["Cache-Control"] = "private, max-age=3600"
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "properties": {"name": area.name}, "geometry": display_boundary(area.boundary)}
+            for area in all_barangays(db)
+        ],
+    }
+
+
+@router.get("/locate")
+def locate(
+    request: Request,
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The barangay a pin would be placed in, so the report form can warn before sending. Only a preview: the server
+    works it out again when the report is submitted."""
+    rate_limit(request, "locate", 30, key=user.id)
+    areas = all_barangays(db)
+    found = matching(areas, lat, lng)
+    return {"active": bool(areas), "barangay": next((area.name for area in areas if area.id == found), None)}
+
+
 def report_filter(db: Session, user: User):
     """Query condition for the reports staff may see. Residents' own-report rule stays with the callers."""
     if user.role != "staff" or not active(db):
@@ -126,8 +195,12 @@ async def requested_decision(request: Request):
     return body.get("decision") if isinstance(body, dict) else None
 
 
-def guard_duplicate_decision(request: Request, decision: str | None = Depends(requested_decision),
-                             db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def guard_duplicate_decision(
+    request: Request,
+    decision: str | None = Depends(requested_decision),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Router-level check, because duplicates.py is frozen and its decision route looks up suggestions directly."""
     suggestion_id = request.path_params.get("suggestion_id")
     item = db.get(DuplicateSuggestion, suggestion_id) if suggestion_id else None
@@ -165,8 +238,11 @@ def assign_unassigned(db: Session) -> int:
 def remove_crossing_suggestions(db: Session) -> int:
     """Pending suggestions saved before these boundaries existed may pair reports that a border now separates."""
     placed = dict(db.execute(select(Report.id, Report.barangay_id)).all())
-    crossing = [item for item in db.scalars(select(DuplicateSuggestion).where(DuplicateSuggestion.decision == "pending"))
-                if placed[item.report_id] != placed[item.candidate_report_id]]
+    crossing = [
+        item
+        for item in db.scalars(select(DuplicateSuggestion).where(DuplicateSuggestion.decision == "pending"))
+        if placed[item.report_id] != placed[item.candidate_report_id]
+    ]
     for item in crossing:
         db.delete(item)
     return len(crossing)
@@ -203,7 +279,9 @@ def import_boundaries(data, dry_run=False) -> dict:
     features = features_from(data)
     with session_for_url() as db:
         if not count_where(db, User.role == "administrator"):
-            raise ValueError("Create an administrator account first: only administrators see reports outside every boundary")
+            raise ValueError(
+                "Create an administrator account first: only administrators see reports outside every boundary"
+            )
         for name, boundary in features:
             existing = db.scalar(select(Barangay).where(Barangay.name == name))
             if existing:

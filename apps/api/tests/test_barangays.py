@@ -397,8 +397,9 @@ def crossing_suggestion(north_id, south_id, decision="pending"):
     from barangai.models import DuplicateSuggestion
 
     with session_for_url() as db:
-        item = DuplicateSuggestion(report_id=north_id, candidate_report_id=south_id, model_version="synthetic",
-                                   score=0.9, decision=decision)
+        item = DuplicateSuggestion(
+            report_id=north_id, candidate_report_id=south_id, model_version="synthetic", score=0.9, decision=decision
+        )
         db.add(item)
         db.commit()
         return item.id
@@ -480,3 +481,82 @@ def test_rejecting_a_link_places_a_report_that_had_no_barangay(client, photo):
     assert post(client, f"/reports/{linked}/case/decision", decision="rejected").status_code == 200
     with session_for_url() as db:
         assert db.get(Report, linked).barangay.name == "North"
+
+
+def test_boundaries_and_locate_need_a_session(client):
+    assert client.get("/barangays/boundaries").status_code == 401
+    assert client.get("/barangays/locate", params={"lat": 14.6, "lng": 121.0}).status_code == 401
+
+
+def test_maps_get_no_borders_and_no_warning_before_barangays_are_loaded(client):
+    register(client)
+    assert client.get("/barangays/boundaries").json() == {"type": "FeatureCollection", "features": []}
+    assert client.get("/barangays/locate", params={"lat": 14.6, "lng": 121.0}).json() == {
+        "active": False,
+        "barangay": None,
+    }
+
+
+def test_locate_previews_the_barangay_of_a_pin(client):
+    load_areas()
+    register(client)
+    pin = {"lat": NORTH["latitude"], "lng": NORTH["longitude"]}
+    assert client.get("/barangays/locate", params=pin).json() == {"active": True, "barangay": "North"}
+    pin = {"lat": OUTSIDE["latitude"], "lng": OUTSIDE["longitude"]}
+    assert client.get("/barangays/locate", params=pin).json() == {"active": True, "barangay": None}
+    assert client.get("/barangays/locate", params={"lat": 91, "lng": 121.0}).status_code == 422
+
+
+def test_display_borders_are_lighter_but_the_stored_boundary_is_untouched(client):
+    from barangai.barangays import display_ring, import_boundaries
+
+    account("admin@example.test", "administrator")
+    # A straight edge with needless points, plus one real corner the simplifying must keep.
+    edge = [[121.0 + step / 1000, 14.6] for step in range(11)]
+    ring = [*edge, [121.01, 14.61], [121.005, 14.615], [121.0, 14.61], edge[0]]
+    assert display_ring(ring) == [
+        [121.0, 14.6],
+        [121.01, 14.6],
+        [121.01, 14.61],
+        [121.005, 14.615],
+        [121.0, 14.61],
+        [121.0, 14.6],
+    ]
+    import_boundaries(
+        {"type": "Feature", "properties": {"name": "Edge"}, "geometry": {"type": "Polygon", "coordinates": [ring]}}
+    )
+    register(client)
+    feature_out = client.get("/barangays/boundaries").json()["features"][0]
+    assert feature_out["properties"] == {"name": "Edge"}
+    assert len(feature_out["geometry"]["coordinates"][0]) < len(ring)
+    from barangai.db import session_for_url
+    from barangai.models import Barangay
+
+    with session_for_url() as db:
+        assert db.query(Barangay).one().boundary["coordinates"][0] == ring
+
+
+def test_the_dasmarinas_file_has_every_barangay_and_places_known_pins():
+    import json
+    from pathlib import Path
+
+    from barangai.barangays import contains, features_from
+
+    path = Path(__file__).parents[1] / "data" / "dasmarinas-barangays.geojson"
+    areas = dict(features_from(json.loads(path.read_text(encoding="utf-8"))))
+    assert len(areas) == 75
+    # Inside each one according to the file itself: guards against swapped coordinates and a bad export.
+    for name, lat, lng in (
+        ("Salawag", 14.3416, 120.9692),
+        ("Paliparan II", 14.3009, 120.993),
+        ("Zone IV", 14.3236, 120.9399),
+    ):
+        assert [area for area, boundary in areas.items() if contains(boundary, lat, lng)] == [name]
+    assert not any(contains(boundary, 14.5995, 120.9842) for boundary in areas.values())  # Manila
+
+
+@pytest.mark.parametrize("path, params", [("boundaries", {}), ("locate", {"lat": 14.6, "lng": 121.0})])
+def test_boundary_routes_are_rate_limited(client, path, params):
+    register(client)
+    statuses = [client.get(f"/barangays/{path}", params=params).status_code for _ in range(31)]
+    assert statuses == [200] * 30 + [429]

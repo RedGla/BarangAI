@@ -1,6 +1,6 @@
 # BarangAI
 
-Community incident reporting for Philippine barangays, built for the PLDT AI in 30 Hours hackathon. Residents submit photographed, located concerns; barangay staff verify and manage them. No report is forwarded automatically. See the [presentation guide](docs/presentation-demo.md), [feature status](docs/feature-status.md), and [deployment guide](docs/deployment.md) for capabilities and remaining gates.
+Community incident reporting for Philippine barangays. Residents submit photographed, located concerns; barangay staff verify and manage them. No report is forwarded automatically. See the [presentation guide](docs/presentation-demo.md), [feature status](docs/feature-status.md), and [deployment guide](docs/deployment.md) for capabilities and remaining gates.
 
 ## Current state
 
@@ -20,8 +20,8 @@ python -m pip install -e '.[test]'
 $env:DATABASE_URL = 'postgresql+psycopg2://USER:PASSWORD@localhost/barangai'
 alembic upgrade head
 python -m barangai.bootstrap_staff staff@example.test --role staff
-# Optional: load barangays, after which staff need --barangay "<name>". See docs/deployment.md.
-# python -m barangai.barangays boundaries.geojson
+# Optional: load barangays. This needs an administrator (--role administrator), and staff then need --barangay "<name>". See docs/deployment.md.
+# python -m barangai.barangays data/dasmarinas-barangays.geojson
 uvicorn barangai.main:app --host 127.0.0.1 --port 8000
 ```
 
