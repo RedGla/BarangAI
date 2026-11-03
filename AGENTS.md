@@ -1,7 +1,7 @@
 # BarangAI project rules
 
 - Follow the user's global AGENTS.md instructions.
-- Build a barangay incident-reporting app for the PLDT AI in 30 Hours hackathon. This replaced the DLSU-D paper as the project's scope, so features may go beyond the paper. Each staff account belongs to one barangay; administrators see all. Never auto-forward reports to outside offices.
+- Build a barangay incident-reporting app. Since 3 Nov 2026 this is a standalone project, no longer tied to the PLDT AI in 30 Hours hackathon or the DLSU-D paper, so features may go beyond the paper. Each staff account belongs to one barangay; administrators see all. Never auto-forward reports to outside offices.
 - Required roles: resident, staff, administrator. Enforce permissions in the API.
 - Keep model prediction, resident category, and staff-verified category distinct.
 - Categories: flooding, fallen_trees, broken_streetlights, exposed_wiring, potholes, uncollected_garbage, damaged_signage, other. The model predicts only its trained subset.

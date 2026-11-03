@@ -1,4 +1,4 @@
-# Supabase setup for the Render hackathon demo
+# Supabase setup for the Render demo
 
 BarangAI keeps its own resident/staff/administrator accounts, sessions and API permissions. Supabase provides PostgreSQL and a private photo bucket. Do not add Supabase Auth users or browser access to the application tables.
 
@@ -16,7 +16,7 @@ postgresql://postgres.PROJECT_REF:PERCENT_ENCODED_PASSWORD@COPIED_POOLER_HOST:54
 
 Percent encode reserved password characters. `sslmode=require` requires encryption; for certificate and hostname verification use `sslmode=verify-full` with the server root certificate supplied through `sslrootcert` as described in the Supabase connection docs. Never disable TLS verification to work around a connection error. The application uses psycopg2, prechecks reused connections and allows at most five connections per worker (three pooled plus two temporary overflow connections). Start the demo with one worker.
 
-Use the table-owner connection (`postgres.PROJECT_REF` in the copied pooler URL) for the hackathon demo and migrations. It is privileged: keep the password only on the API server. The application tables have RLS enabled with no client policies; a non-owner role without an explicit server policy would be denied too. A separate restricted runtime role requires a deliberate follow-up design and verification, rather than broad public policies.
+Use the table-owner connection (`postgres.PROJECT_REF` in the copied pooler URL) for the demo and migrations. It is privileged: keep the password only on the API server. The application tables have RLS enabled with no client policies; a non-owner role without an explicit server policy would be denied too. A separate restricted runtime role requires a deliberate follow-up design and verification, rather than broad public policies.
 
 ## Apply the application's migrations
 
