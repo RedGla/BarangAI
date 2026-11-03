@@ -270,6 +270,56 @@ describe('confirming auto-filled details', () => {
     expect(screen.getByLabelText(/latitude/i)).toHaveValue(14.3)
     expect(screen.queryByText('From your phone', { exact: false })).toBeNull()
   })
+
+  it("keeps the newer photo's GPS when the phone location for an earlier photo arrives late", async () => {
+    exif.gps.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ latitude: 14.32941, longitude: 120.93672 })
+    let fix: (position: object) => void = () => {}
+    const getCurrentPosition = vi.fn(success => (fix = success))
+    vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } })
+    serve(nothing)
+    render(<App />)
+    const picker = await screen.findByLabelText(/incident photo/i)
+    fireEvent.change(picker, { target: { files: [photo()] } })
+    await waitFor(() => expect(getCurrentPosition).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText(/incident photo/i), { target: { files: [photo()] } })
+    await waitFor(() => expect(screen.getByRole('button', { name: /^next/i })).toBeEnabled())
+    next()
+    expect(await screen.findByText('From your photo', { exact: false })).toBeInTheDocument()
+    fix({ coords: { latitude: 14.5, longitude: 121.01 } })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(screen.getByLabelText(/latitude/i)).toHaveValue(14.32941)
+    expect(screen.queryByText('From your phone', { exact: false })).toBeNull()
+  })
+
+  it('uses the phone location again once a photo has replaced the hand-set pin', async () => {
+    exif.gps
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ latitude: 14.32941, longitude: 120.93672 })
+      .mockResolvedValueOnce(undefined)
+    // The phone refuses the first time, so the resident sets the pin by hand.
+    const getCurrentPosition = vi.fn((success, failure) =>
+      getCurrentPosition.mock.calls.length === 1
+        ? failure()
+        : success({ coords: { latitude: 14.5, longitude: 121.01 } }),
+    )
+    vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition } })
+    serve(nothing)
+    render(<App />)
+    const pick = async () => {
+      fireEvent.change(await screen.findByLabelText(/incident photo/i), { target: { files: [photo()] } })
+      await waitFor(() => expect(screen.getByRole('button', { name: /^next/i })).toBeEnabled())
+    }
+    await pick()
+    next()
+    fireEvent.change(await screen.findByLabelText(/latitude/i), { target: { value: '14.3' } })
+    fireEvent.change(screen.getByLabelText(/longitude/i), { target: { value: '120.9' } })
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
+    await pick() // has GPS: the pin now comes from this photo
+    await pick() // has none: the phone location fills the pin again
+    next()
+    expect(await screen.findByText('From your phone', { exact: false })).toBeInTheDocument()
+    expect(screen.getByLabelText(/latitude/i)).toHaveValue(14.5)
+  })
 })
 
 describe('choices made while the photo is checked', () => {

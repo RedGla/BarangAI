@@ -89,6 +89,7 @@ export function ReportForm() {
   const [locationSource, setLocationSource] = useState<LocationSource>(null)
   // The latest photo pick; a slower shrink of an earlier pick must not replace it.
   const pickId = useRef(0)
+  const [pickKey, setPickKey] = useState(0)
   const [preparing, setPreparing] = useState(false)
   // Read from the original photo before shrinking drops them; staff use them to check the pin and date.
   const [details, setDetails] = useState<PhotoDetails | null>(null)
@@ -114,10 +115,13 @@ export function ReportForm() {
   const aiCategory = aiFilled.category && category === prediction?.model_category
   const aiDescription = aiFilled.description && description === prediction?.suggested_description
   const autoLocation = locationSource === 'photo' || locationSource === 'device'
+  // The case's staff-verified category, offered to the resident; it becomes theirs only once they confirm it.
+  const caseCategory = Boolean(joining) && category === joining?.category
   // Auto-fill only assists: whatever it filled must be confirmed by the resident before sending.
-  const autoFilled = aiCategory || aiDescription || autoLocation
-  // The tick covers the exact values the resident saw, so a late GPS fix or AI answer clears it.
-  const shown = [category, description, latitude, longitude, locationSource].join('|')
+  const autoFilled = aiCategory || aiDescription || autoLocation || caseCategory
+  // The tick covers the exact values the resident saw for this photo, so a late GPS fix, AI answer or new
+  // photo clears it.
+  const shown = [pickKey, category, description, latitude, longitude, locationSource].join('|')
   const [confirmedFor, setConfirmedFor] = useState<string | null>(null)
   const confirmed = confirmedFor === shown
   // A pin the resident set by hand wins over the quiet GPS lookup that may still be running.
@@ -172,13 +176,15 @@ export function ReportForm() {
   function pickPhoto(file: File) {
     setPhoto(null)
     setPreview('')
-    setCategory('')
+    // "I see this too" keeps the case's category; otherwise the new photo's AI answer fills it.
+    setCategory(joining?.category ?? '')
     if (aiDescription) setDescription('')
     setAiFilled(NOT_FILLED)
     setPrediction(null)
     setError('')
     const problem = photoProblem(file)
     const pick = ++pickId.current
+    setPickKey(pick)
     if (problem) {
       setPreparing(false)
       setError(problem)
@@ -206,6 +212,7 @@ export function ReportForm() {
         setLatitude(String(coordinates[0]))
         setLongitude(String(coordinates[1]))
         setLocationSource('photo')
+        pinnedByHand.current = false
       } else if (locationSource === 'photo' || !validCoordinates(latitude, longitude)) {
         // The pin came from the previous photo, so it may be somewhere else entirely.
         if (locationSource === 'photo') {
@@ -213,7 +220,8 @@ export function ReportForm() {
           setLongitude('')
           setLocationSource(null)
         }
-        locate(true)
+        pinnedByHand.current = false
+        locate(true, pick)
       }
     })
   }
@@ -223,8 +231,11 @@ export function ReportForm() {
     setLocationSource('manual')
     pinnedByHand.current = true
   }
-  /** Quiet mode is the automatic attempt after a photo: a refusal shows no error, the resident just sets the pin. */
-  function locate(quiet = false) {
+  /**
+   * Quiet mode is the automatic attempt after a photo: a refusal shows no error, the resident just sets the pin.
+   * Its answer is dropped once the resident has set the pin or picked another photo.
+   */
+  function locate(quiet = false, pick = pickId.current) {
     if (!navigator.geolocation) {
       if (!quiet) setError('GPS is unavailable. Enter coordinates or place a pin on the map.')
       return
@@ -232,7 +243,7 @@ export function ReportForm() {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       position => {
-        if (quiet && pinnedByHand.current) {
+        if (quiet && (pinnedByHand.current || pick !== pickId.current)) {
           setLocating(false)
           return
         }
