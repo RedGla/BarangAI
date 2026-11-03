@@ -1,5 +1,6 @@
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Link } from 'react-router'
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, m } from 'motion/react'
 import {
   Camera,
@@ -9,16 +10,22 @@ import {
   ChevronRight,
   ImagePlus,
   Info,
+  Lightbulb,
   LoaderCircle,
   LocateFixed,
   Map as MapIcon,
+  Plus,
   Sparkles,
   TriangleAlert,
+  Users,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Kap, kapAvailable } from '@/components/Kap'
+import { DateText } from '@/components/DateText'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Alert, LargeTitle } from '@/components/page'
 import { cn } from '@/lib/utils'
 import { post } from '../../lib/api'
@@ -26,10 +33,12 @@ import { Txt, useLanguage, useText } from '../../lib/i18n'
 import { ResidentAccount } from '../../app/ResidentShell'
 import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
+import { describePrompts, toggleAnswer } from './describe'
 import { MapPicker } from './MapPicker'
 import { photoCoordinates, useStreetName, type LocationSource } from './location'
-import { useSubmitReport } from './queries'
-import type { Category, Prediction, Report } from './types'
+import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES, photoDetails, type PhotoDetails } from './photo'
+import { findNearby, reportKeys, useCommunityCases, useSubmitReport } from './queries'
+import type { Category, Nearby, Prediction, Report } from './types'
 
 const UNAVAILABLE: Prediction = { prediction_available: false, model_category: null, confidence: null }
 const NOT_FILLED = { category: false, description: false }
@@ -45,7 +54,7 @@ function photoProblem(file: File) {
     ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
     (!file.type && /\.(jpe?g|png|webp)$/i.test(file.name))
   if (!supported) return 'Choose a JPG, PNG, or WebP photo.'
-  if (file.size > 5_000_000) return 'Photo is too large. Choose a photo of 5 MB or less.'
+  if (file.size > MAX_PICK_BYTES) return 'Photo is too large. Choose a photo of 25 MB or less.'
   return ''
 }
 
@@ -78,12 +87,45 @@ export function ReportForm() {
   // Which fields the AI filled from the photo; editing a field hands it back to the resident.
   const [aiFilled, setAiFilled] = useState(NOT_FILLED)
   const [locationSource, setLocationSource] = useState<LocationSource>(null)
+  // The latest photo pick; a slower shrink of an earlier pick must not replace it.
+  const pickId = useRef(0)
+  const [pickKey, setPickKey] = useState(0)
+  const [preparing, setPreparing] = useState(false)
+  // Read from the original photo before shrinking drops them; staff use them to check the pin and date.
+  const [details, setDetails] = useState<PhotoDetails | null>(null)
+  const [photoGps, setPhotoGps] = useState<[number, number] | null>(null)
+  // "You already reported this": the resident's own open report or a neighbours' case near the pin.
+  const [nearby, setNearby] = useState<Nearby | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { language } = useLanguage()
   const streetName = useStreetName(latitude, longitude)
+  // "I see this too" from the community map: this report is offered to staff as evidence for that case.
+  const [params, setParams] = useSearchParams()
+  const caseId = params.get('case')
+  const community = useCommunityCases(Boolean(caseId))
+  const joining = caseId ? community.data?.find(item => item.id === caseId && item.open_for_evidence) : undefined
+  useEffect(() => {
+    if (joining) setCategory(current => current || joining.category)
+  }, [joining])
   // A field counts as the AI's only while it still holds the AI's text: a choice the resident made while the
   // photo was being checked is theirs, even though the AI's answer arrived afterwards.
   const aiCategory = aiFilled.category && category === prediction?.model_category
   const aiDescription = aiFilled.description && description === prediction?.suggested_description
+  const autoLocation = locationSource === 'photo' || locationSource === 'device'
+  // The case's staff-verified category, offered to the resident; it becomes theirs only once they confirm it.
+  const caseCategory = Boolean(joining) && category === joining?.category
+  // Auto-fill only assists: whatever it filled must be confirmed by the resident before sending.
+  const autoFilled = aiCategory || aiDescription || autoLocation || caseCategory
+  // The tick covers the exact values the resident saw for this photo, so a late GPS fix, AI answer or new
+  // photo clears it.
+  const shown = [pickKey, category, description, latitude, longitude, locationSource].join('|')
+  const [confirmedFor, setConfirmedFor] = useState<string | null>(null)
+  const confirmed = confirmedFor === shown
+  // A pin the resident set by hand wins over the quiet GPS lookup that may still be running.
+  const pinnedByHand = useRef(false)
   useEffect(() => {
     if (!photo || typeof URL.createObjectURL !== 'function') return
     const url = URL.createObjectURL(photo)
@@ -134,23 +176,43 @@ export function ReportForm() {
   function pickPhoto(file: File) {
     setPhoto(null)
     setPreview('')
-    setCategory('')
+    // "I see this too" keeps the case's category; otherwise the new photo's AI answer fills it.
+    setCategory(joining?.category ?? '')
     if (aiDescription) setDescription('')
     setAiFilled(NOT_FILLED)
     setPrediction(null)
     setError('')
     const problem = photoProblem(file)
+    const pick = ++pickId.current
+    setPickKey(pick)
     if (problem) {
+      setPreparing(false)
       setError(problem)
       return
     }
-    setPhoto(file)
+    setPreparing(true)
+    setDetails(null)
+    setPhotoGps(null)
+    void photoDetails(file).then(found => pick === pickId.current && setDetails(found))
+    // Shrink before upload to save data and storage; GPS is read from the original below, before it is lost.
+    void compressPhoto(file).then(small => {
+      if (pick !== pickId.current) return
+      setPreparing(false)
+      if (small.size > MAX_UPLOAD_BYTES) {
+        setError('This device could not shrink the photo. Choose a photo of 5 MB or less.')
+        return
+      }
+      setPhoto(small)
+    })
     // Location without typing: the photo's own GPS first, then the phone's, quietly (the pin can still move).
     void photoCoordinates(file).then(coordinates => {
+      if (pick !== pickId.current) return
+      setPhotoGps(coordinates)
       if (coordinates) {
         setLatitude(String(coordinates[0]))
         setLongitude(String(coordinates[1]))
         setLocationSource('photo')
+        pinnedByHand.current = false
       } else if (locationSource === 'photo' || !validCoordinates(latitude, longitude)) {
         // The pin came from the previous photo, so it may be somewhere else entirely.
         if (locationSource === 'photo') {
@@ -158,7 +220,8 @@ export function ReportForm() {
           setLongitude('')
           setLocationSource(null)
         }
-        locate(true)
+        pinnedByHand.current = false
+        locate(true, pick)
       }
     })
   }
@@ -166,9 +229,13 @@ export function ReportForm() {
     setLatitude(lat)
     setLongitude(lng)
     setLocationSource('manual')
+    pinnedByHand.current = true
   }
-  /** Quiet mode is the automatic attempt after a photo: a refusal shows no error, the resident just sets the pin. */
-  function locate(quiet = false) {
+  /**
+   * Quiet mode is the automatic attempt after a photo: a refusal shows no error, the resident just sets the pin.
+   * Its answer is dropped once the resident has set the pin or picked another photo.
+   */
+  function locate(quiet = false, pick = pickId.current) {
     if (!navigator.geolocation) {
       if (!quiet) setError('GPS is unavailable. Enter coordinates or place a pin on the map.')
       return
@@ -176,6 +243,10 @@ export function ReportForm() {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       position => {
+        if (quiet && (pinnedByHand.current || pick !== pickId.current)) {
+          setLocating(false)
+          return
+        }
         setLatitude(position.coords.latitude.toFixed(6))
         setLongitude(position.coords.longitude.toFixed(6))
         setLocationSource('device')
@@ -189,7 +260,7 @@ export function ReportForm() {
       { enableHighAccuracy: true, timeout: 10000 },
     )
   }
-  function submit() {
+  async function submit() {
     if (!photo || !category) {
       setError('Add a photo and category.')
       return
@@ -198,12 +269,36 @@ export function ReportForm() {
       setError('Enter valid coordinates.')
       return
     }
+    if (autoFilled && !confirmed) return
+    if (!joining) {
+      // Ask first if this looks like something already reported; a failed check never blocks the report.
+      setChecking(true)
+      const found = await findNearby(category, latitude, longitude).catch(() => null)
+      setChecking(false)
+      if ((found?.own?.length ?? 0) > 0 || (found?.cases?.length ?? 0) > 0) {
+        setNearby(found)
+        return
+      }
+    }
+    send()
+  }
+  function send(caseId = joining?.id) {
+    if (!photo || !category) return
+    setNearby(null)
     const form = new FormData()
     form.set('image', photo)
     form.set('resident_category', category)
     form.set('latitude', latitude)
     form.set('longitude', longitude)
     if (description.trim()) form.set('description', description.trim())
+    if (caseId) form.set('case_id', caseId)
+    if (locationSource) form.set('location_source', locationSource)
+    if (details?.takenAt) form.set('photo_taken_at', details.takenAt)
+    if (details?.camera) form.set('photo_camera', '1')
+    if (photoGps) {
+      form.set('photo_latitude', String(photoGps[0]))
+      form.set('photo_longitude', String(photoGps[1]))
+    }
     submitReport.mutate(form, {
       onSuccess: report => {
         navigator.vibrate?.(25)
@@ -212,7 +307,29 @@ export function ReportForm() {
       onError: caught => setError(caught.message),
     })
   }
+  /** Adds this photo and note to the resident's own open report instead of opening a second one. */
+  async function addToOwn(reportId: string) {
+    if (!photo) return
+    const form = new FormData()
+    form.set('note', description.trim() || t('Another photo of the same problem.'))
+    form.set('image', photo)
+    setAdding(true)
+    try {
+      await post(`/reports/${reportId}/addenda`, form)
+      await queryClient.invalidateQueries({ queryKey: reportKeys.all })
+      setNearby(null)
+      navigate(`/reports/${reportId}`)
+    } catch (caught) {
+      setNearby(null)
+      setError(caught instanceof Error ? caught.message : 'Request failed')
+    } finally {
+      setAdding(false)
+    }
+  }
   function startOver() {
+    setParams({}, { replace: true })
+    setDetails(null)
+    setPhotoGps(null)
     setSubmitted(null)
     setPhoto(null)
     setPreview('')
@@ -224,6 +341,8 @@ export function ReportForm() {
     setShowMap(false)
     setAiFilled(NOT_FILLED)
     setLocationSource(null)
+    setConfirmedFor(null)
+    pinnedByHand.current = false
     setDirection(-1)
     setStep(0)
   }
@@ -238,6 +357,30 @@ export function ReportForm() {
   return (
     <div className="lg:mx-auto lg:max-w-6xl">
       <LargeTitle title={t('Make a report')} trailing={<ResidentAccount />} />
+      {joining && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl bg-tint p-3.5">
+          <Users className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-[14.5px]">
+            <strong className="block font-semibold">
+              {t('Adding to')}: {t(label(joining.category))}
+            </strong>
+            <span className="text-muted-foreground">
+              {joining.location_label ? `${joining.location_label} · ` : ''}
+              <Txt>Your photo, pin and time become evidence for this issue once staff check it.</Txt>
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setParams({}, { replace: true })}
+            aria-label={t('Report a separate issue instead')}
+            className="group -m-2 grid size-11 shrink-0 place-items-center rounded-full"
+          >
+            <span className="grid size-7 place-items-center rounded-full bg-background/70 text-muted-foreground group-hover:text-foreground">
+              <X className="size-4" strokeWidth={2.5} />
+            </span>
+          </button>
+        </div>
+      )}
       {/* Desktop: the steps on the left, a live summary of the report on the right. */}
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start xl:gap-10">
         <div>
@@ -281,6 +424,7 @@ export function ReportForm() {
               {step === 0 && (
                 <PhotoStep
                   photo={photo}
+                  preparing={preparing}
                   preview={preview}
                   prediction={prediction}
                   onSelect={selectPhoto}
@@ -489,50 +633,73 @@ export function ReportForm() {
                       </span>
                     )}
                   </label>
+                  {category && (
+                    <DescribeHelp
+                      category={category}
+                      description={description}
+                      onChange={text => {
+                        setDescription(text.slice(0, 1000))
+                        setAiFilled(current => ({ ...current, description: false }))
+                      }}
+                    />
+                  )}
                 </>
               )}
               {step === 3 && (
-                <div className="hairline overflow-hidden rounded-2xl bg-card">
-                  {preview && (
-                    <img
-                      className="aspect-[2/1] w-full object-cover lg:aspect-[3/1]"
-                      src={preview}
-                      alt={t('Preview of incident photo')}
-                    />
-                  )}
-                  <dl>
-                    {[
-                      { term: 'Photo', value: photo?.name, edit: 0 },
-                      {
-                        term: 'Location',
-                        value: streetName ? `${streetName} (${coordinates})` : coordinates,
-                        edit: 1,
-                      },
-                      { term: 'Incident category', value: t(label(category || null)), edit: 2 },
-                      {
-                        term: 'Description (optional)',
-                        value: description.trim() || t('No description added'),
-                        edit: 2,
-                      },
-                    ].map(item => (
-                      <div key={item.term} className="flex items-start gap-3 border-t px-4 py-3 first:border-t-0">
-                        <div className="min-w-0 flex-1">
-                          <dt className="text-[13px] text-muted-foreground">
-                            <Txt>{item.term}</Txt>
-                          </dt>
-                          <dd className="mt-0.5 text-[16px] break-words">{item.value}</dd>
+                <>
+                  <div className="hairline overflow-hidden rounded-2xl bg-card">
+                    {preview && (
+                      <img
+                        className="aspect-[2/1] w-full object-cover lg:aspect-[3/1]"
+                        src={preview}
+                        alt={t('Preview of incident photo')}
+                      />
+                    )}
+                    <dl>
+                      {[
+                        { term: 'Photo', value: photo?.name, edit: 0, auto: false },
+                        {
+                          term: 'Location',
+                          value: streetName ? `${streetName} (${coordinates})` : coordinates,
+                          edit: 1,
+                          auto: autoLocation,
+                        },
+                        { term: 'Incident category', value: t(label(category || null)), edit: 2, auto: aiCategory },
+                        {
+                          term: 'Description (optional)',
+                          value: description.trim() || t('No description added'),
+                          edit: 2,
+                          auto: aiDescription,
+                        },
+                      ].map(item => (
+                        <div key={item.term} className="flex items-start gap-3 border-t px-4 py-3 first:border-t-0">
+                          <div className="min-w-0 flex-1">
+                            <dt className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+                              <Txt>{item.term}</Txt>
+                              {item.auto && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklab,var(--status-pending)_14%,transparent)] px-2 py-0.5 text-[12px] font-semibold text-[var(--status-pending)]">
+                                  <Sparkles className="size-3" aria-hidden="true" />
+                                  <Txt>Auto-filled · check</Txt>
+                                </span>
+                              )}
+                            </dt>
+                            <dd className="mt-0.5 text-[16px] break-words">{item.value}</dd>
+                          </div>
+                          <button
+                            className="-my-1 min-h-11 px-1 text-[15px] font-medium text-primary"
+                            type="button"
+                            onClick={() => go(item.edit)}
+                          >
+                            <Txt>Edit</Txt>
+                          </button>
                         </div>
-                        <button
-                          className="-my-1 min-h-11 px-1 text-[15px] font-medium text-primary"
-                          type="button"
-                          onClick={() => go(item.edit)}
-                        >
-                          <Txt>Edit</Txt>
-                        </button>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
+                      ))}
+                    </dl>
+                  </div>
+                  {autoFilled && (
+                    <AutoFillCheck confirmed={confirmed} onConfirm={value => setConfirmedFor(value ? shown : null)} />
+                  )}
+                </>
               )}
             </m.div>
           </AnimatePresence>
@@ -568,15 +735,23 @@ export function ReportForm() {
                 size="lg"
                 className="flex-1 shadow-[0_8px_20px_-8px_rgb(29_100_216/0.6)]"
                 type="button"
-                disabled={submitReport.isPending}
-                onClick={submit}
+                disabled={submitReport.isPending || checking || (autoFilled && !confirmed)}
+                onClick={() => void submit()}
               >
-                {submitReport.isPending && <LoaderCircle className="animate-spin" />}
-                <Txt>{submitReport.isPending ? 'Submitting…' : 'Submit report'}</Txt>
+                {(submitReport.isPending || checking) && <LoaderCircle className="animate-spin" />}
+                <Txt>{submitReport.isPending || checking ? 'Submitting…' : 'Submit report'}</Txt>
               </Button>
             )}
           </div>
         </div>
+        <NearbySheet
+          nearby={nearby}
+          adding={adding}
+          onClose={() => setNearby(null)}
+          onAddToOwn={reportId => void addToOwn(reportId)}
+          onJoinCase={caseId => send(caseId)}
+          onSubmitAnyway={() => send()}
+        />
         <Summary
           step={step}
           preview={preview}
@@ -696,14 +871,97 @@ function AiTag({ check = false }: { check?: boolean }) {
   )
 }
 
+/** Tap-to-add answers that prompt the details staff need and a photo cannot show (depth, size, since when). */
+function DescribeHelp({
+  category,
+  description,
+  onChange,
+}: {
+  category: Category
+  description: string
+  onChange: (text: string) => void
+}) {
+  const t = useText()
+  return (
+    <section className="hairline space-y-3 rounded-2xl bg-card p-4" aria-labelledby="describe-help">
+      <h2 id="describe-help" className="flex items-center gap-1.5 text-[15px] font-semibold">
+        <Lightbulb className="size-4 text-primary" aria-hidden="true" />
+        <Txt>Help me describe it</Txt>
+      </h2>
+      {describePrompts[category].map(prompt => {
+        const answers = prompt.answers.map(t)
+        return (
+          <div key={prompt.question} role="group" aria-label={t(prompt.question)} className="space-y-1.5">
+            <p className="text-[13px] text-muted-foreground">
+              <Txt>{prompt.question}</Txt>
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {answers.map(answer => {
+                const chosen = description.includes(answer)
+                return (
+                  <button
+                    key={answer}
+                    type="button"
+                    aria-pressed={chosen}
+                    onClick={() => onChange(toggleAnswer(description, answers, answer))}
+                    className={cn(
+                      'inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-[14px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                      chosen ? 'bg-primary text-primary-foreground' : 'bg-tint text-primary',
+                    )}
+                  >
+                    {chosen ? (
+                      <Check className="size-3.5" aria-hidden="true" />
+                    ) : (
+                      <Plus className="size-3.5" aria-hidden="true" />
+                    )}
+                    {answer.replace(/\.$/, '')}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+/** Auto-fill is only an aid: the resident must confirm what the AI and GPS filled in before sending. */
+function AutoFillCheck({ confirmed, onConfirm }: { confirmed: boolean; onConfirm: (value: boolean) => void }) {
+  return (
+    <div className="hairline space-y-3 rounded-2xl bg-card p-4">
+      <p className="flex gap-2.5 text-[14px] leading-snug">
+        <Info className="mt-0.5 size-4 shrink-0 text-[var(--status-pending)]" aria-hidden="true" />
+        <span>
+          <Txt>
+            Auto-fill only helps you fill in this form. The AI and GPS can be wrong, so check that the category,
+            location, and description are correct. Barangay personnel still verify every report.
+          </Txt>
+        </span>
+      </p>
+      <label className="flex min-h-11 items-center gap-3 rounded-xl bg-muted/60 px-3 py-2 text-[15px] font-medium has-focus-visible:ring-2 has-focus-visible:ring-ring">
+        <input
+          type="checkbox"
+          className="size-5 shrink-0 accent-[var(--primary)]"
+          checked={confirmed}
+          onChange={event => onConfirm(event.target.checked)}
+        />
+        <Txt>I checked the auto-filled details and they are correct.</Txt>
+      </label>
+    </div>
+  )
+}
+
 function PhotoStep({
   photo,
+  preparing,
   preview,
   prediction,
   onSelect,
   onDrop,
 }: {
   photo: File | null
+  preparing: boolean
   preview: string
   prediction: Prediction | null
   onSelect: (event: ChangeEvent<HTMLInputElement>) => void
@@ -716,7 +974,7 @@ function PhotoStep({
   return (
     <>
       <p className="text-[15px] text-muted-foreground">
-        <Txt>Take a clear photo. The AI fills in the details for you, and you can change anything.</Txt>
+        <Txt>Take a clear photo. The AI fills in the details to help you; check them and change anything wrong.</Txt>
       </p>
       {preview && (
         <m.img
@@ -727,6 +985,12 @@ function PhotoStep({
           src={preview}
           alt={t('Preview of incident photo')}
         />
+      )}
+      {preparing && (
+        <p className="flex items-center gap-2 px-1 text-[14px] text-muted-foreground" role="status">
+          <LoaderCircle className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <Txt>Preparing photo…</Txt>
+        </p>
       )}
       {photo && (
         <p className="flex items-center gap-2 px-1 text-[14px] text-muted-foreground" role="status">
@@ -785,7 +1049,7 @@ function PhotoStep({
         </label>
       </div>
       <p className="px-1 text-[13px] text-muted-foreground">
-        <Txt>JPG, PNG, or WebP, up to 5 MB. Avoid faces and license plates.</Txt>
+        <Txt>JPG, PNG, or WebP, up to 25 MB. Avoid faces and license plates.</Txt>
       </p>
       {photo && <AiCard prediction={prediction} />}
     </>
@@ -916,5 +1180,89 @@ function SuccessView({ report, onAnother }: { report: Report; onAnother: () => v
         </Button>
       </div>
     </div>
+  )
+}
+
+/** "You already reported this": offered before a second report of the same issue is sent. */
+function NearbySheet({
+  nearby,
+  adding,
+  onClose,
+  onAddToOwn,
+  onJoinCase,
+  onSubmitAnyway,
+}: {
+  nearby: Nearby | null
+  adding: boolean
+  onClose: () => void
+  onAddToOwn: (reportId: string) => void
+  onJoinCase: (caseId: string) => void
+  onSubmitAnyway: () => void
+}) {
+  const t = useText()
+  const own = nearby?.own[0]
+  const shared = own ? undefined : nearby?.cases[0]
+  return (
+    <Sheet open={Boolean(nearby)} onOpenChange={open => !open && onClose()}>
+      <SheetContent
+        side="bottom"
+        className="mx-auto max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
+        <SheetHeader className="items-center px-5 pt-6 text-center">
+          {kapAvailable('thinking') && <Kap pose="thinking" className="mb-1 h-24 w-auto" />}
+          <SheetTitle className="text-[20px] font-bold">
+            <Txt>{own ? 'You already reported this' : 'Neighbours already reported this'}</Txt>
+          </SheetTitle>
+          <SheetDescription className="text-[15px]">
+            <Txt>
+              {own
+                ? 'Your open report is close to this pin. Add this photo and note to it so staff see everything in one place.'
+                : 'Barangay staff are already working on an issue close to this pin. Add your photo to it as evidence.'}
+            </Txt>
+          </SheetDescription>
+        </SheetHeader>
+        {(own || shared) && (
+          <div className="mx-5 flex items-center gap-3 rounded-2xl bg-muted/60 p-3.5">
+            <CategoryTile category={(own?.resident_category ?? shared?.category)!} />
+            <div className="min-w-0 flex-1 text-[14px]">
+              <strong className="block truncate text-[15px] font-semibold">
+                <Txt>{label(own?.resident_category ?? shared?.category ?? null)}</Txt>
+              </strong>
+              <span className="block text-muted-foreground">
+                {own ? (
+                  <>
+                    #{own.id.slice(0, 8).toUpperCase()} ·{' '}
+                    {own.created_at && <DateText value={own.created_at} compact />}
+                  </>
+                ) : (
+                  <>
+                    {shared?.location_label ?? ''} {shared?.contributors ?? 0} {t('residents')}
+                  </>
+                )}
+                {' · '}
+                {own?.distance_m ?? shared?.distance_m} m {t('away')}
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col gap-2.5 px-5 pt-2">
+          {own && (
+            <Button size="lg" disabled={adding} onClick={() => onAddToOwn(own.id)}>
+              {adding && <LoaderCircle className="animate-spin" />}
+              <Txt>Add to my report</Txt>
+            </Button>
+          )}
+          {shared && (
+            <Button size="lg" onClick={() => onJoinCase(shared.id)}>
+              <Users />
+              <Txt>Add my photo to this issue</Txt>
+            </Button>
+          )}
+          <Button size="lg" variant="secondary" disabled={adding} onClick={onSubmitAnyway}>
+            <Txt>It is a different problem. Send a new report</Txt>
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

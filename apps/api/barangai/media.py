@@ -1,7 +1,10 @@
+import hashlib
 import io
 import logging
 import os
 import re
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -9,6 +12,8 @@ import httpx
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from . import privacy
 
 
 class StorageRequestUncertain(HTTPException):
@@ -113,16 +118,58 @@ def image_response(location):
     return FileResponse(location, media_type="image/jpeg", headers=headers)
 
 
+# Stored photos: longest side 1600 px (MAX_IMAGE_EDGE), JPEG quality 80, no metadata. About 200-500 KB for a phone
+# photo, so the Supabase Free bucket (1 GB) holds a few thousand reports, while signs, wiring and potholes stay
+# readable. The browser shrinks to the same size first; this is the guarantee for any client that did not.
+PHOTO_LONGEST_SIDE = int(os.environ.get("MAX_IMAGE_EDGE", 1600))
+PHOTO_QUALITY = 80
+_sanitized: "OrderedDict[str, bytes]" = OrderedDict()
+_sanitized_lock = threading.Lock()
+
+
 def sanitize_image(data: bytes) -> bytes:
+    """Rotated upright, at most MAX_IMAGE_EDGE pixels on the long side, faces blurred, every metadata field dropped.
+
+    The AI preview and the submission upload the same photo, so the result is kept briefly by the upload's hash and
+    the second call skips the face check.
+    """
     if len(data) > int(os.environ.get("MAX_IMAGE_BYTES", 5_000_000)):
         raise HTTPException(413, "Image too large")
+    key = hashlib.sha256(data).hexdigest()
+    with _sanitized_lock:
+        if key in _sanitized:
+            _sanitized.move_to_end(key)
+            return _sanitized[key]
     try:
         with Image.open(io.BytesIO(data)) as image:
             if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 20_000_000:
                 raise HTTPException(422, "Unsupported image")
+            # JPEGs can decode at 1/2, 1/4 or 1/8 scale, which saves memory on the small Render instance.
+            image.draft("RGB", (PHOTO_LONGEST_SIDE, PHOTO_LONGEST_SIDE))
             image.load()
-            output = io.BytesIO()
-            ImageOps.exif_transpose(image).convert("RGB").save(output, format="JPEG", quality=85)
-            return output.getvalue()
+            picture = ImageOps.exif_transpose(image)
+            # Shrink first, so flattening, face blurring and converting work on the small copy.
+            picture.thumbnail((PHOTO_LONGEST_SIDE, PHOTO_LONGEST_SIDE), Image.Resampling.LANCZOS, reducing_gap=3.0)
+            if picture.mode in {"RGBA", "LA", "P", "PA"}:
+                picture = picture.convert("RGBA")
+                flat = Image.new("RGB", picture.size, "white")
+                flat.paste(picture, mask=picture.getchannel("A"))
+                picture = flat
+            # Pixels only: Pillow would otherwise copy the original's JPEG comment, EXIF or ICC profile across.
+            picture = Image.frombytes("RGB", picture.size, picture.convert("RGB").tobytes())
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise HTTPException(422, "Invalid image") from None
+    picture, _ = privacy.blur_faces(picture)
+    output = io.BytesIO()
+    picture.save(output, format="JPEG", quality=PHOTO_QUALITY, optimize=True, progressive=True)
+    result = output.getvalue()
+    with _sanitized_lock:
+        _sanitized[key] = result
+        while len(_sanitized) > 16:
+            _sanitized.popitem(last=False)
+    return result
+
+
+def clear_sanitized_cache():
+    with _sanitized_lock:
+        _sanitized.clear()

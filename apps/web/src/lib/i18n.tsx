@@ -7,6 +7,60 @@ const LanguageContext = createContext<{ language: Language; setLanguage: (value:
 })
 
 const filipino: Record<string, string> = {
+  'Daily limit for added details reached':
+    'Naabot mo na ang bilang ng maidadagdag na detalye ngayong araw. Subukan ulit bukas.',
+  'Another photo of the same problem.': 'Isa pang larawan ng parehong problema.',
+  'The AI only helps you fill in this form. It can be wrong, so check the category, description and pin before sending. Barangay staff verify every report.':
+    'Tumutulong lang ang AI sa pagpuno ng form na ito. Maaari itong magkamali, kaya suriin ang kategorya, paglalarawan at pin bago ipadala. Sinusuri ng kawani ng barangay ang bawat ulat.',
+  'I checked the category, description and pin.': 'Nasuri ko ang kategorya, paglalarawan at pin.',
+  'Preparing your photo…': 'Inihahanda ang iyong larawan…',
+  'JPG, PNG, or WebP. Large photos are made smaller before sending. Keep faces and plate numbers out.':
+    'JPG, PNG, o WebP. Pinaliliit ang malalaking larawan bago ipadala. Iwasang makuhanan ang mukha at plaka.',
+  'You already reported this': 'Naiulat mo na ito',
+  'Neighbours already reported this': 'Naiulat na ito ng mga kapitbahay',
+  'Your open report is close to this pin. Add this photo and note to it so staff see everything in one place.':
+    'Malapit sa pin na ito ang bukas mong ulat. Idagdag dito ang larawan at tala para makita ng kawani ang lahat sa iisang lugar.',
+  'Barangay staff are already working on an issue close to this pin. Add your photo to it as evidence.':
+    'May inaasikaso nang isyu ang kawani ng barangay malapit sa pin na ito. Idagdag ang iyong larawan bilang patunay.',
+  away: 'ang layo',
+  'Add to my report': 'Idagdag sa aking ulat',
+  'Add my photo to this issue': 'Idagdag ang larawan ko sa isyung ito',
+  'It is a different problem. Send a new report': 'Ibang problema ito. Magpadala ng bagong ulat',
+  'Daily report limit reached': 'Naabot mo na ang bilang ng ulat para sa araw na ito. Subukan ulit bukas.',
+  'This report is closed': 'Sarado na ang ulat na ito. Gumawa ng bagong ulat kung may bagong problema.',
+  'Add a note of up to 1000 characters': 'Magdagdag ng tala na hanggang 1000 titik.',
+  'Added later by the resident': 'Idinagdag ng residente pagkatapos',
+  'Photo added later': 'Larawang idinagdag pagkatapos',
+  'Added. Barangay staff were notified.': 'Naidagdag na. Naabisuhan ang kawani ng barangay.',
+  'Add details': 'Magdagdag ng detalye',
+  'Your first report stays as it is. Staff see what you add, with the time you added it.':
+    'Hindi nababago ang una mong ulat. Makikita ng kawani ang idinagdag mo at kung kailan.',
+  'What changed? For example: the water is higher now.': 'Ano ang nagbago? Halimbawa: mas mataas na ang tubig.',
+  'Add a photo (optional)': 'Magdagdag ng larawan (opsiyonal)',
+  Cancel: 'Kanselahin',
+  'Send to staff': 'Ipadala sa kawani',
+  'The pin is {n} m from where the photo was taken.': '{n} m ang layo ng pin sa lugar kung saan kinuha ang larawan.',
+  'The photo was taken {n} days before it was sent.': 'Kinuha ang larawan {n} araw bago ito ipinadala.',
+  "The photo's date is {n} days ahead; the camera clock may be wrong.":
+    '{n} araw na mas maaga ang petsa ng larawan; maaaring mali ang orasan ng camera.',
+  'The photo has no camera or date details. Common for screenshots, downloads and some phones.':
+    'Walang detalye ng camera o petsa ang larawan. Karaniwan ito sa screenshot, download at ilang telepono.',
+  'Check photo': 'Suriin ang larawan',
+  'Photo checks': 'Pagsusuri ng larawan',
+  "The photo's date and GPS match the report.": 'Tugma sa ulat ang petsa at GPS ng larawan.',
+  "Pin from the photo's GPS": 'Pin mula sa GPS ng larawan',
+  "Pin from the phone's GPS": 'Pin mula sa GPS ng telepono',
+  'Pin placed by hand': 'Pin na inilagay nang mano-mano',
+  'Photo details can be edited, so these checks are hints, not proof. Residents do not see them.':
+    'Nababago ang detalye ng larawan, kaya pahiwatig lamang ang mga ito at hindi patunay. Hindi ito nakikita ng mga residente.',
+  'Mark all read': 'Markahang nabasa lahat',
+  'New reports and details residents add will appear here.':
+    'Lalabas dito ang mga bagong ulat at detalyeng idinagdag ng mga residente.',
+  'New report': 'Bagong ulat',
+  'A resident added details': 'May idinagdag na detalye ang residente',
+  "Kap's brief": 'Buod ni Kap',
+  "Worded by AI from today's numbers": 'Isinulat ng AI mula sa mga bilang ngayon',
+  "From today's numbers": 'Mula sa mga bilang ngayon',
   pending: 'Naghihintay ng pasiya',
   confirmed: 'Kumpirmado',
   rejected: 'Hindi kinumpirma',
@@ -58,13 +112,16 @@ const filipino: Record<string, string> = {
   'Take photo': 'Kumuha ng larawan',
   'Incident photo · Choose photo': 'Larawan ng insidente · Pumili ng larawan',
   'Selected photo:': 'Napiling larawan:',
-  'JPG, PNG, or WebP, up to 5 MB. Avoid faces and license plates.':
-    'JPG, PNG, o WebP, hanggang 5 MB. Iwasan ang mukha at plaka ng sasakyan.',
+  'Preparing photo…': 'Inihahanda ang larawan…',
+  'JPG, PNG, or WebP, up to 25 MB. Avoid faces and license plates.':
+    'JPG, PNG, o WebP, hanggang 25 MB. Iwasan ang mukha at plaka ng sasakyan.',
   'HEIC photos are not supported. Choose JPG, PNG, or WebP, or take a new photo.':
     'Hindi suportado ang HEIC. Pumili ng JPG, PNG, o WebP, o kumuha ng bagong larawan.',
   'Choose a JPG, PNG, or WebP photo.': 'Pumili ng larawang JPG, PNG, o WebP.',
-  'Photo is too large. Choose a photo of 5 MB or less.':
-    'Masyadong malaki ang larawan. Pumili ng larawang hindi lalampas sa 5 MB.',
+  'Photo is too large. Choose a photo of 25 MB or less.':
+    'Masyadong malaki ang larawan. Pumili ng larawang hindi lalampas sa 25 MB.',
+  'This device could not shrink the photo. Choose a photo of 5 MB or less.':
+    'Hindi mapaliit ng device na ito ang larawan. Pumili ng larawang hindi lalampas sa 5 MB.',
 
   'Share what you see, pin where it happened, and follow every report from submission to resolution.':
     'Ibahagi ang nakita mo, ituro ang lokasyon, at subaybayan ang ulat hanggang malutas.',
@@ -321,8 +378,75 @@ const filipino: Record<string, string> = {
   'Filled by AI · you can edit': 'Pinunan ng AI · puwede mong baguhin',
   'The AI writes this from your photo when it can. Add a short note if it did not.':
     'Isinusulat ito ng AI mula sa larawan mo kapag kaya nito. Magdagdag ng maikling tala kung hindi.',
-  'Take a clear photo. The AI fills in the details for you, and you can change anything.':
-    'Kumuha ng malinaw na larawan. Pupunan ng AI ang mga detalye, at puwede mong baguhin ang anuman.',
+  'Take a clear photo. The AI fills in the details to help you; check them and change anything wrong.':
+    'Kumuha ng malinaw na larawan. Pupunan ng AI ang mga detalye para tulungan ka; suriin ang mga ito at baguhin ang anumang mali.',
+  'Auto-filled · check': 'Awtomatikong pinunan · pakisuri',
+  'Help me describe it': 'Tulungan akong ilarawan ito',
+  'Since when?': 'Kailan pa?',
+  'It started today.': 'Nagsimula ito ngayong araw.',
+  'It has been like this for a few days.': 'Ilang araw na itong ganito.',
+  'It has been like this for over a week.': 'Mahigit isang linggo na itong ganito.',
+  'How deep?': 'Gaano kalalim?',
+  'The water is ankle-deep.': 'Hanggang bukung-bukong ang tubig.',
+  'The water is knee-deep.': 'Hanggang tuhod ang tubig.',
+  'The water is waist-deep.': 'Hanggang baywang ang tubig.',
+  'Can vehicles pass?': 'Nakakadaan ba ang sasakyan?',
+  'Cars can still pass.': 'Nakakadaan pa ang mga kotse.',
+  'Only large vehicles can pass.': 'Malalaking sasakyan lang ang nakakadaan.',
+  'No vehicles can pass.': 'Walang sasakyang makadaan.',
+  'How wide?': 'Gaano kalapad?',
+  'It is about fist-sized.': 'Mga kasinlaki ng kamao.',
+  'It is about a tyre wide.': 'Mga kasinlapad ng gulong.',
+  'It is wider than a car.': 'Mas malapad pa sa kotse.',
+  'It is shallow.': 'Mababaw ito.',
+  'It is about ankle-deep.': 'Mga hanggang bukung-bukong ang lalim.',
+  'It is deeper than a hand.': 'Mas malalim pa sa isang dangkal.',
+  'Where on the road?': 'Saang bahagi ng kalsada?',
+  'It is in the middle of the road.': 'Nasa gitna ng kalsada.',
+  'It is near the edge of the road.': 'Nasa gilid ng kalsada.',
+  'It is on the sidewalk.': 'Nasa bangketa.',
+  'How big?': 'Gaano kalaki?',
+  'A large branch fell.': 'Malaking sanga ang bumagsak.',
+  'A whole tree fell.': 'Buong puno ang bumagsak.',
+  'What does it block or touch?': 'Ano ang nahaharangan o natatamaan nito?',
+  'It blocks the road.': 'Nakaharang ito sa kalsada.',
+  'It blocks the sidewalk.': 'Nakaharang ito sa bangketa.',
+  'It is resting on power lines.': 'Nakasandal ito sa mga kable ng kuryente.',
+  'It fell on a house or vehicle.': 'Bumagsak ito sa bahay o sasakyan.',
+  'What is wrong?': 'Ano ang problema?',
+  'The light stays off at night.': 'Patay ang ilaw kahit gabi.',
+  'The light flickers.': 'Patay-sindi ang ilaw.',
+  'The pole is damaged or leaning.': 'Sira o nakatagilid ang poste.',
+  'What do you see?': 'Ano ang nakikita mo?',
+  'The wire is sparking.': 'Umiispark ang kable.',
+  'The wire is hanging low.': 'Nakalaylay nang mababa ang kable.',
+  'The wire is on the ground.': 'Nasa lupa ang kable.',
+  'The wire is near water.': 'Malapit sa tubig ang kable.',
+  'How much?': 'Gaano karami?',
+  'There are a few bags.': 'Ilang supot lang.',
+  'There is a large pile.': 'Malaking tambak.',
+  'It is spilling onto the road.': 'Umaabot na sa kalsada.',
+  'How long?': 'Gaano katagal?',
+  'It missed one collection.': 'Isang beses hindi nakolekta.',
+  'It has not been collected for over a week.': 'Mahigit isang linggo nang hindi nakokolekta.',
+  'Other problems?': 'Iba pang problema?',
+  'It smells bad.': 'Mabaho ito.',
+  'It attracts animals or flies.': 'Nilalapitan ng hayop o langaw.',
+  'The sign is bent.': 'Baluktot ang karatula.',
+  'The sign has fallen.': 'Bumagsak ang karatula.',
+  'The sign is faded or hard to read.': 'Kupas o mahirap basahin ang karatula.',
+  'The sign is missing.': 'Nawawala ang karatula.',
+  'Which sign?': 'Anong karatula?',
+  'It is a traffic sign.': 'Karatula ng trapiko.',
+  'It is a street name sign.': 'Karatula ng pangalan ng kalye.',
+  'It is a warning sign.': 'Karatula ng babala.',
+  'Is it getting worse?': 'Lumalala ba?',
+  'It is getting worse.': 'Lumalala ito.',
+  'It has stayed the same.': 'Ganoon pa rin ito.',
+  'Auto-fill only helps you fill in this form. The AI and GPS can be wrong, so check that the category, location, and description are correct. Barangay personnel still verify every report.':
+    'Tulong lamang ang awtomatikong pagpuno sa form na ito. Puwedeng magkamali ang AI at GPS, kaya suriin kung tama ang kategorya, lokasyon, at paglalarawan. Bineberipika pa rin ng barangay ang bawat ulat.',
+  'I checked the auto-filled details and they are correct.':
+    'Sinuri ko ang mga awtomatikong pinunang detalye at tama ang mga ito.',
   'or drag a photo here': 'o i-drag dito ang larawan',
   'We filled in the category for you. You can change it on the Details step.':
     'Pinunan namin ang kategorya para sa iyo. Puwede mo itong baguhin sa hakbang na Detalye.',
@@ -350,6 +474,70 @@ const filipino: Record<string, string> = {
     'Hindi makikita sa larawan kung gumagana ang ilaw. Piliin lamang ito kung patay ito sa gabi o halatang sira.',
   'Nothing looks broken. We picked the closest category; please verify it and the description.':
     'Mukhang walang sira. Pinili namin ang pinakamalapit na kategorya; pakisuri ito at ang paglalarawan.',
+  // Grouped cases and the community map
+  'Case not found': 'Hindi makita ang isyung ito.',
+  'This issue is already resolved': 'Nalutas na ang isyung ito.',
+  'Confirm or reject the case link first': 'Kumpirmahin o tanggihan muna ang pag-ugnay sa kaso.',
+  'Rejected reports cannot be grouped': 'Hindi maaaring pagsamahin ang mga tinanggihang ulat.',
+  'Choose two different reports': 'Pumili ng dalawang magkaibang ulat.',
+  'No case link to decide': 'Walang pag-ugnay sa kaso na pagpapasiyahan.',
+  'Added to a case · check': 'Idinagdag sa kaso · suriin',
+  'Group into one case': 'Pagsamahin sa iisang kaso',
+  'In this case': 'Kasama sa kasong ito',
+  'resident reported this': 'residente ang nag-ulat nito',
+  'residents reported this': 'residente ang nag-ulat nito',
+  'The barangay handles these reports together as one case.':
+    'Sabay na inaasikaso ng barangay ang mga ulat na ito bilang iisang kaso.',
+  'You added this to a reported issue. Barangay staff will check that it is the same one.':
+    'Idinagdag mo ito sa isang naiulat nang isyu. Susuriin ng kawani ng barangay kung iisa nga ang mga ito.',
+  'Grouped case': 'Pinagsamang kaso',
+  'High priority': 'Mataas na prayoridad',
+  'Medium priority': 'Katamtamang prayoridad',
+  'Low priority': 'Mababang prayoridad',
+  'Suggested priority': 'Mungkahing prayoridad',
+  'residents reported it': 'residente ang nag-ulat nito',
+  'Reported today': 'Iniulat ngayong araw',
+  'Last report': 'Huling ulat',
+  'days ago': 'araw na ang nakalipas',
+  'A suggestion from severity, recency and independent residents. Staff decide the order.':
+    'Mungkahi batay sa tindi, kung gaano kabago, at bilang ng magkakaibang residente. Ang kawani ang magpapasiya ng pagkakasunod.',
+  Sort: 'Ayusin',
+  Category: 'Kategorya',
+  'Sort reports': 'Ayusin ang mga ulat',
+  Newest: 'Pinakabago',
+  'Staff have grouped your report with others about the same issue.':
+    'Isinama ng kawani ang iyong ulat sa iba pang ulat tungkol sa parehong isyu.',
+  residents: 'residente',
+  'Status changes here apply to every report in the case.':
+    'Ang pagbabago ng estado rito ay para sa lahat ng ulat sa kaso.',
+  'The resident says this is the same issue. Check before changing its status.':
+    'Sabi ng residente, iisa ang isyung ito. Suriin bago baguhin ang estado nito.',
+  'Same issue · add to case': 'Iisang isyu · idagdag sa kaso',
+  'Different issue': 'Ibang isyu',
+  'To check': 'Susuriin',
+  'Adding to': 'Idinadagdag sa',
+  'Your photo, pin and time become evidence for this issue once staff check it.':
+    'Magiging patunay para sa isyung ito ang iyong larawan, lokasyon at oras kapag nasuri na ng kawani.',
+  'Report a separate issue instead': 'Mag-ulat na lang ng hiwalay na isyu',
+  'Community map': 'Mapa ng komunidad',
+  'Issues your barangay has accepted, and how many residents reported each.':
+    'Mga isyung tinanggap ng barangay, at kung ilang residente ang nag-ulat ng bawat isa.',
+  'Show issues': 'Ipakita ang mga isyu',
+  'Being fixed': 'Inaayos',
+  'No open issues on the map': 'Walang bukas na isyu sa mapa',
+  'No resolved issues yet': 'Wala pang nalutas na isyu',
+  'Accepted reports appear here once barangay staff have checked them.':
+    'Lalabas dito ang mga tinanggap na ulat kapag nasuri na ng kawani ng barangay.',
+  'Photos, descriptions and names are never shown here. Pins are approximate.':
+    'Hindi kailanman ipinapakita rito ang mga larawan, paglalarawan at pangalan. Tinatayang lokasyon lamang ang mga pin.',
+  'Selected issue': 'Napiling isyu',
+  Residents: 'Mga residente',
+  'First reported': 'Unang iniulat',
+  'Latest report': 'Pinakabagong ulat',
+  'You reported this issue.': 'Iniulat mo ang isyung ito.',
+  'I see this too': 'Nakikita ko rin ito',
+  'See what neighbours reported. Seen it too? Add your photo.':
+    'Tingnan ang iniulat ng mga kapitbahay. Nakita mo rin? Idagdag ang iyong larawan.',
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {

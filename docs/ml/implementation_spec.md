@@ -1,6 +1,6 @@
 # Implementation specification — BarangAI Watch CV v5
 
-Version 2 (Phase 2), 25 October 2026. Audience: the implementing coding agent (Claude Sonnet).
+Version 2 (Phase 2), 25 October 2026. Audience: the developer implementing it.
 
 Read these first, in order; where this spec and they disagree, they win, and you flag the conflict to the user:
 

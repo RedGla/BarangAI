@@ -98,7 +98,7 @@ def workers_ai_guidance(message: str, language: str) -> str | None:
 @router.post("/chat")
 def chat(body: ChatInput, request: Request, db: Session = Depends(get_db), user: User = Depends(require_csrf)):
     require_role(user, {"resident"})
-    rate_limit(request, "chat", count=30)
+    rate_limit(request, "chat", count=30, key=user.id)
     if body.language not in GUIDANCE:
         raise HTTPException(422, "Unsupported language")
     reply = GUIDANCE[body.language]

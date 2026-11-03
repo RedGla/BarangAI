@@ -1,7 +1,7 @@
 import { createContext, lazy, Suspense, useContext } from 'react'
 import { NavLink, Outlet } from 'react-router'
 import { m } from 'motion/react'
-import { Bell, ClipboardList, House, LifeBuoy, SquarePen } from 'lucide-react'
+import { Bell, ClipboardList, House, LifeBuoy, Map as MapIcon, SquarePen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Txt, useText } from '../lib/i18n'
 import type { User } from '../features/auth/queries'
@@ -20,6 +20,8 @@ export const TABS = [
   { to: '/updates', label: 'Updates', icon: Bell },
   { to: '/help', label: 'Help', icon: LifeBuoy },
 ]
+// Not a tab (five is the most a phone tab bar holds): phones reach it from Home, desktops from the sidebar.
+export const COMMUNITY = { to: '/community', label: 'Community map', icon: MapIcon }
 
 const UserContext = createContext<User | null>(null)
 /** The signed-in resident, for greetings. */

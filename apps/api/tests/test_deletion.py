@@ -44,7 +44,7 @@ def test_default_is_dry_run_with_no_data_or_file_changes(deletion_data, tmp_path
     result = run_deletion(deletion_data, receipt_path=receipt)
     assert result["action"] == "dry-run"
     assert result["dependent_rows"] == {"notifications": 1, "duplicate_suggestions": 2,
-                                        "staff_actions": 1, "report_events": 1}
+                                        "staff_actions": 1, "report_events": 1, "report_addenda": 0}
     assert deletion_data[2].is_file()
     assert not receipt.exists()
 
@@ -176,3 +176,22 @@ def test_cli_uses_password_prompt_and_defaults_to_inspection(deletion_data, monk
     assert prompts == ["Administrator password: "]
     assert json.loads(capsys.readouterr().out)["action"] == "dry-run"
     assert deletion_data[2].is_file()
+
+
+def test_delete_removes_details_the_resident_added_and_their_photos(client, deletion_data, photo, tmp_path):
+    from barangai.db import session_for_url
+    from barangai.models import ReportAddendum
+
+    added = client.post(f"/reports/{deletion_data[0]}/addenda", data={"note": "Synthetic: water is rising"},
+                        files={"image": ("more.jpg", photo, "image/jpeg")},
+                        headers={"X-CSRF-Token": client.cookies.get("csrf_token", "")})
+    assert added.status_code == 201, added.text
+    with session_for_url() as db:
+        extra = Path(db.get(ReportAddendum, added.json()["id"]).image_path)
+    assert extra.is_file()
+    assert run_deletion(deletion_data)["images"] == 2
+    run_deletion(deletion_data, confirm=deletion_data[0], receipt_path=tmp_path / "r.jsonl",
+                 reason="synthetic-demo-cleanup")
+    with session_for_url() as db:
+        assert db.scalar(select(func.count()).select_from(ReportAddendum)) == 0
+    assert not extra.exists()

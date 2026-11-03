@@ -99,3 +99,39 @@ def test_descriptions_are_trimmed_and_capped(client, photo):
     assert submit(client, photo, description="  Synthetic blocked drain  ").json()["description"] == "Synthetic blocked drain"
     assert submit(client, photo, description="   ").json()["description"] is None
     assert submit(client, photo, description="x" * 1001).status_code == 422
+
+
+def test_large_photo_is_shrunk_before_storage(client):
+    import io
+
+    from PIL import Image
+    output = io.BytesIO()
+    exif = Image.Exif()
+    exif[274] = 6  # rotated camera photo
+    exif.get_ifd(0x8825)[2] = (14.0, 18.0, 0.0)  # synthetic GPS latitude
+    Image.radial_gradient("L").resize((4000, 3000)).convert("RGB").save(
+        output, format="JPEG", quality=95, exif=exif, comment=b"Synthetic Juan, 14.3N 120.9E"
+    )
+    assert len(output.getvalue()) < 5_000_000
+    register(client)
+    report_id = submit(client, output.getvalue()).json()["id"]
+    result = client.get(f"/reports/{report_id}/image")
+    with Image.open(io.BytesIO(result.content)) as image:
+        assert image.size == (1200, 1600)
+        assert image.format == "JPEG"
+        assert not image.getexif()
+        assert "comment" not in image.info and "icc_profile" not in image.info
+    assert b"Synthetic" not in result.content
+    assert len(result.content) < len(output.getvalue())
+
+
+def test_transparent_png_is_flattened_on_white(client):
+    import io
+
+    from PIL import Image
+    output = io.BytesIO()
+    Image.new("RGBA", (8, 8), (0, 0, 0, 0)).save(output, format="PNG")
+    register(client)
+    report_id = submit(client, output.getvalue()).json()["id"]
+    with Image.open(io.BytesIO(client.get(f"/reports/{report_id}/image").content)) as image:
+        assert min(image.getpixel((4, 4))) > 240

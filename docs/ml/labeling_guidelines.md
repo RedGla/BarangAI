@@ -18,7 +18,7 @@ The examples cite contact sheets under `ml/data/review/`. They are git-ignored a
 | `damaged_signage` | 4 | `damaged_signage` | Public or road signage that is clearly broken, detached, bent, destroyed or functionally impaired |
 | `other` | 5 | *(no suggestion)* | No clearly identifiable target incident |
 
-**Why the garbage label is renamed.** An image cannot show whether a collection was scheduled or missed. The training label therefore describes only what is visible. The API maps `garbage_accumulation` to the existing `uncollected_garbage` display category (`sonnet_implementation_spec.md` S9), so the resident-facing wording does not change.
+**Why the garbage label is renamed.** An image cannot show whether a collection was scheduled or missed. The training label therefore describes only what is visible. The API maps `garbage_accumulation` to the existing `uncollected_garbage` display category (`implementation_spec.md` S9), so the resident-facing wording does not change.
 
 ## 2. General admission rules (all labels)
 

@@ -8,10 +8,10 @@ import { Txt, useText } from '../lib/i18n'
 import type { User } from '../features/auth/queries'
 import { AccountIdentity, AccountMenu } from '../features/account/AccountMenu'
 import { useReports } from '../features/reports/queries'
-import { TABS, useUnread } from './ResidentShell'
+import { COMMUNITY, TABS, useUnread } from './ResidentShell'
 
 const SECTIONS = [
-  { label: 'Reports', tabs: TABS.slice(0, 3) },
+  { label: 'Reports', tabs: [...TABS.slice(0, 3), COMMUNITY] },
   { label: 'Support', tabs: TABS.slice(3) },
 ]
 

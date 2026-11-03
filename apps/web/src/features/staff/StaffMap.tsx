@@ -7,14 +7,17 @@ import { BARANGAY_CENTER } from '../reports/MapPicker'
 import { STATUS_STYLE } from '../reports/StatusBadge'
 import type { Report } from '../reports/types'
 
-/** Pins coloured by status (the legend beside each map names them); clicking one opens the report. */
-export function StaffMap({
+/** What a pin needs: reports for staff, grouped cases on the residents' shared map. */
+export type Pin = Pick<Report, 'id' | 'status' | 'resident_category' | 'latitude' | 'longitude'>
+
+/** Pins coloured by status (the legend beside each map names them); clicking one opens it. */
+export function StaffMap<T extends Pin>({
   reports,
   onSelect,
   className,
 }: {
-  reports: Report[]
-  onSelect?: (report: Report) => void
+  reports: T[]
+  onSelect?: (report: T) => void
   className?: string
 }) {
   const t = useText()

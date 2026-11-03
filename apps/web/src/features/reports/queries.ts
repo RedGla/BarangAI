@@ -1,11 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, post } from '../../lib/api'
-import type { DuplicateResult, Report, Status, StaffAction } from './types'
+import type {
+  Addendum,
+  Brief,
+  CommunityCase,
+  DuplicateResult,
+  Nearby,
+  Report,
+  ReportCase,
+  Status,
+  StaffAction,
+} from './types'
 
 export const reportKeys = {
   all: ['reports'] as const,
   detail: (id: string) => ['reports', id] as const,
   duplicates: (id: string) => ['reports', id, 'duplicates'] as const,
+  case: (id: string) => ['reports', id, 'case'] as const,
+  // Under 'reports' so every report write refreshes the shared map too.
+  community: ['reports', 'community'] as const,
 }
 
 export function useReports() {
@@ -28,6 +41,17 @@ export function useDuplicates(id: string, enabled: boolean) {
     queryFn: () => api<DuplicateResult>(`/reports/${id}/duplicates`),
     enabled,
   })
+}
+
+export function useReportCase(id: string) {
+  return useQuery({
+    queryKey: reportKeys.case(id),
+    queryFn: () => api<{ case: ReportCase | null }>(`/reports/${id}/case`).then(result => result.case),
+  })
+}
+
+export function useCommunityCases(enabled = true) {
+  return useQuery({ queryKey: reportKeys.community, queryFn: () => api<CommunityCase[]>('/cases/map'), enabled })
 }
 
 /** Invalidates every report query (lists, details, duplicates) after a successful write. */
@@ -60,3 +84,27 @@ export const useDecideDuplicate = () =>
   useReportMutation(({ id, decision, note }: { id: string; decision: 'confirmed' | 'rejected'; note?: string }) =>
     post(`/duplicates/${id}/decision`, { decision, ...(note ? { note } : {}) }),
   )
+
+export const useLinkReports = () =>
+  useReportMutation((body: { report_id: string; other_report_id: string }) => post('/cases/link', body))
+
+export const useCaseDecision = (id: string) =>
+  useReportMutation((body: { decision: 'confirmed' | 'rejected'; note?: string }) =>
+    post(`/reports/${id}/case/decision`, body),
+  )
+
+/** The resident's own open report of this issue nearby, or a neighbours' accepted case, before submitting. */
+export const findNearby = (category: string, latitude: string, longitude: string, signal?: AbortSignal) =>
+  api<Nearby>(`/nearby?${new URLSearchParams({ category, latitude, longitude }).toString()}`, signal ? { signal } : {})
+
+/** Adds details (and optionally a photo) to the resident's own open report; the original stays unchanged. */
+export const useAddDetails = (id: string) =>
+  useReportMutation((form: FormData) => post<Addendum>(`/reports/${id}/addenda`, form))
+
+export function useBrief(language: string) {
+  return useQuery({
+    queryKey: ['brief', language],
+    queryFn: () => api<Brief>(`/staff/brief?language=${language}`),
+    staleTime: 5 * 60_000,
+  })
+}

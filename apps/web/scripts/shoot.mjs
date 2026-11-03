@@ -37,7 +37,11 @@ if (role !== 'none' && !process.env.SEED_DEMO_PASSWORD)
   throw new Error('Set SEED_DEMO_PASSWORD to the seeded demo password.')
 
 mkdirSync(out, { recursive: true })
-const browser = await puppeteer.launch({ executablePath: chrome })
+// CHROME_NO_SANDBOX=1 for containers that run as root (cloud sessions); never needed on a desktop.
+const browser = await puppeteer.launch({
+  executablePath: chrome,
+  args: process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : [],
+})
 const context = await browser.createBrowserContext()
 if (role !== 'none') {
   const page = await context.newPage()
@@ -58,29 +62,31 @@ if (role !== 'none') {
 
 // Multi-step flows: each step is shot as <role>-<flow>-<n>-<step>-<width>.png. A submit writes to the local DB.
 const click = (page, text) => page.locator(`::-p-text(${text})`).click()
+const addPhoto = page =>
+  page.evaluate(async () => {
+    // Synthetic "flooded street" photo drawn in the page, so no real image is used.
+    const canvas = Object.assign(document.createElement('canvas'), { width: 800, height: 520 })
+    const g = canvas.getContext('2d')
+    g.fillStyle = '#9fb7c9'
+    g.fillRect(0, 0, 800, 260)
+    g.fillStyle = '#6b6f52'
+    g.fillRect(0, 230, 800, 60)
+    g.fillStyle = '#7d6a47'
+    g.fillRect(0, 290, 800, 230)
+    g.fillStyle = 'rgba(90,120,135,.75)'
+    g.fillRect(0, 330, 800, 190)
+    const blob = await new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.85))
+    const input = document.querySelector('input[capture]')
+    const files = new DataTransfer()
+    files.items.add(new File([blob], 'flooded-street.jpg', { type: 'image/jpeg' }))
+    input.files = files.files
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })
 const FLOWS = {
   'report-flow': async (page, shot) => {
     await page.goto(new URL('report', base).href, { waitUntil: 'networkidle0' })
     await shot('1-empty')
-    await page.evaluate(async () => {
-      // Synthetic "flooded street" photo drawn in the page, so no real image is used.
-      const canvas = Object.assign(document.createElement('canvas'), { width: 800, height: 520 })
-      const g = canvas.getContext('2d')
-      g.fillStyle = '#9fb7c9'
-      g.fillRect(0, 0, 800, 260)
-      g.fillStyle = '#6b6f52'
-      g.fillRect(0, 230, 800, 60)
-      g.fillStyle = '#7d6a47'
-      g.fillRect(0, 290, 800, 230)
-      g.fillStyle = 'rgba(90,120,135,.75)'
-      g.fillRect(0, 330, 800, 190)
-      const blob = await new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.85))
-      const input = document.querySelector('input[capture]')
-      const files = new DataTransfer()
-      files.items.add(new File([blob], 'flooded-street.jpg', { type: 'image/jpeg' }))
-      input.files = files.files
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    await addPhoto(page)
     await new Promise(r => setTimeout(r, 900))
     await shot('2-photo')
     await click(page, 'Next')
@@ -92,15 +98,42 @@ const FLOWS = {
     await new Promise(r => setTimeout(r, 1500))
     await shot('3-location')
     await click(page, 'Next')
-    await click(page, 'Exposed wiring')
+    await click(page, 'Flooding')
     await new Promise(r => setTimeout(r, 400))
     await shot('4-details')
     await click(page, 'Next')
     await new Promise(r => setTimeout(r, 400))
     await shot('5-review')
+    // If the local AI filled anything in, the resident has to confirm it before sending.
+    if (await page.$('input[type=checkbox]')) await page.click('input[type=checkbox]')
     await click(page, 'Submit report')
     await new Promise(r => setTimeout(r, 1200))
-    await shot('6-sent')
+    // The seeded resident already has an open flood report nearby, so the "already reported" sheet opens.
+    if (await page.$('::-p-text(different problem)')) {
+      await shot('6-already-reported')
+      await click(page, 'different problem')
+      await new Promise(r => setTimeout(r, 1200))
+    }
+    await shot('7-sent')
+  },
+  // The Review step when location came from the phone (a synthetic fix), so the auto-fill check shows. No submit.
+  'report-autofill': async (page, shot) => {
+    await context.overridePermissions(new URL(base).origin, ['geolocation'])
+    await page.setGeolocation({ latitude: 14.3294, longitude: 120.9367 })
+    await page.goto(new URL('report', base).href, { waitUntil: 'networkidle0' })
+    await addPhoto(page)
+    await new Promise(r => setTimeout(r, 1500))
+    await click(page, 'Next')
+    await new Promise(r => setTimeout(r, 600))
+    await shot('1-location')
+    await click(page, 'Next')
+    await click(page, 'Flooding')
+    await click(page, 'Next')
+    await new Promise(r => setTimeout(r, 400))
+    await shot('2-review')
+    await page.click('input[type=checkbox]')
+    await new Promise(r => setTimeout(r, 200))
+    await shot('3-confirmed')
   },
 }
 

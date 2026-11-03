@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -38,6 +38,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="resident")
+    # Appearance and language, so they follow the account to another device. Only known keys are stored.
+    preferences: Mapped[dict | None] = mapped_column(JSON)
 
 
 class LoginSession(Base):
@@ -58,6 +60,18 @@ class OAuthIdentity(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
 
 
+class Case(Base):
+    """One incident reported by one or more residents. Its status is the shared status of its confirmed reports."""
+    __tablename__ = "cases"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    location_label: Mapped[str | None] = mapped_column(String(200))
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
+
+
 class Report(Base):
     __tablename__ = "reports"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -76,10 +90,31 @@ class Report(Base):
     location_label: Mapped[str | None] = mapped_column(String(200))
     # Safety flags from the vision model's own analysis of the photo, never from the client.
     hazards: Mapped[list[str] | None] = mapped_column(JSON)
+    # Grouped case (cases.py). Unconfirmed means a resident said "I see this too" and staff have not checked it.
+    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id", name="fk_reports_case_id"), index=True)
+    case_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # Where the pin came from ("photo", "device" or "manual"), as the resident's form reported it.
+    location_source: Mapped[str | None] = mapped_column(String(10))
+    # Staff-only checks of the photo against the pin and the date (trust.py). Signals to look closer, never proof.
+    trust_flags: Mapped[list[dict] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     events: Mapped[list["ReportEvent"]] = relationship(order_by="ReportEvent.created_at", cascade="all, delete-orphan")
     actions: Mapped[list["StaffAction"]] = relationship(order_by="StaffAction.created_at", cascade="all, delete-orphan")
+    addenda: Mapped[list["ReportAddendum"]] = relationship(order_by="ReportAddendum.created_at",
+                                                           cascade="all, delete-orphan")
+
+
+class ReportAddendum(Base):
+    """Details a resident added to their own report after sending it. Append-only: the original stays as staff
+    first saw it, and every addition is kept with its time."""
+    __tablename__ = "report_addenda"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    report_id: Mapped[str] = mapped_column(ForeignKey("reports.id"), index=True, nullable=False)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    image_path: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
 
 
 class ReportEvent(Base):
@@ -109,6 +144,8 @@ class Notification(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     report_id: Mapped[str] = mapped_column(ForeignKey("reports.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
+    # "status" tells a resident their report moved; "new_report" and "addendum" tell staff something arrived.
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="status", server_default="status")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -30,7 +30,7 @@ Every statement is tagged:
 - **No Kaggle or Roboflow credentials are configured.** [M] There is no `~/.kaggle`, no `kaggle` CLI and no Roboflow key. Kaggle's file *download* endpoint returned `404 Data not found` without authentication.
 - Kaggle's public metadata endpoints (`/api/v1/datasets/view/…` and the paged `/api/v1/datasets/list/…`) do work without authentication. I pulled **complete file listings** (every path and byte size) for every Kaggle source. All Kaggle counts below come from those listings.
 - Roboflow Universe blocks scripted requests with a Cloudflare challenge. I read its pages in a real browser (Playwright). The Ultralytics Platform pages embed their dataset metadata as JSON, which I parsed.
-- **Pixel-level checks have not been run yet.** This covers dimensions, corruption, EXIF, perceptual duplicates and visual label quality. They need authenticated downloads, so they are milestone M1 in `sonnet_implementation_spec.md`. Where this document says "dimensions unknown", the implementation must measure them.
+- **Pixel-level checks have not been run yet.** This covers dimensions, corruption, EXIF, perceptual duplicates and visual label quality. They need authenticated downloads, so they are milestone M1 in `implementation_spec.md`. Where this document says "dimensions unknown", the implementation must measure them.
 
 ## 1. Executive summary
 

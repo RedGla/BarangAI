@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
-import { Inbox, LayoutGrid, Map as MapIcon } from 'lucide-react'
+import { Bell, Inbox, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -27,16 +27,18 @@ import { cn } from '@/lib/utils'
 import { Txt, useText } from '../../lib/i18n'
 import { AccountIdentity, AccountMenu } from '../account/AccountMenu'
 import type { User } from '../auth/queries'
+import { useNotifications } from '../notifications/NotificationsPage'
 import { useReports } from '../reports/queries'
 
 const NAV = [
   { to: '/desk', label: 'Overview', icon: LayoutGrid },
   { to: '/desk/map', label: 'Map', icon: MapIcon },
+  { to: '/desk/updates', label: 'Updates', icon: Bell },
   { to: '/desk/reports', label: 'Reports', icon: Inbox },
 ]
 const SECTIONS = [
-  { label: 'Dashboard', items: NAV.slice(0, 2) },
-  { label: 'Records', items: NAV.slice(2) },
+  { label: 'Dashboard', items: NAV.slice(0, 3) },
+  { label: 'Records', items: NAV.slice(3) },
 ]
 // Hidden when the sidebar collapses to icons.
 const WIDE_ONLY = 'group-data-[collapsible=icon]:hidden'
@@ -49,6 +51,11 @@ export function StaffShell({ user }: { user: User }) {
   const all = reports.data ?? []
   const count = (...statuses: string[]) => all.filter(report => statuses.includes(report.status)).length
   const waiting = count('Pending', 'Under Verification')
+  const notices = useNotifications()
+  // A notifications hiccup must never take the dashboard down with it.
+  const unread = Array.isArray(notices.data)
+    ? notices.data.filter(item => item.kind !== 'status' && !item.read_at).length
+    : 0
   const current = [...NAV].reverse().find(item => pathname.startsWith(item.to)) ?? NAV[0]
   return (
     <TooltipProvider delayDuration={300}>
@@ -88,6 +95,14 @@ export function StaffShell({ user }: { user: User }) {
                             </span>
                           </NavLink>
                         </SidebarMenuButton>
+                        {item.to === '/desk/updates' && unread > 0 && (
+                          <SidebarMenuBadge
+                            aria-label={`${unread} ${t('unread')}`}
+                            className="top-3 rounded-full bg-primary text-primary-foreground"
+                          >
+                            {unread}
+                          </SidebarMenuBadge>
+                        )}
                         {item.to === '/desk/reports' && waiting > 0 && (
                           <SidebarMenuBadge
                             aria-label={`${waiting} ${t('waiting for review')}`}

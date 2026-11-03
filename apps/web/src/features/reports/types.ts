@@ -33,9 +33,46 @@ export type Report = {
   longitude?: number
   location_label?: string | null
   hazards?: Hazard[]
+  case_id?: string | null
+  case_confirmed?: boolean
+  /** Staff only; null once closed. */
+  priority?: Priority | null
+  /** Where the pin came from, as the resident's form reported it. */
+  location_source?: 'photo' | 'device' | 'manual' | null
+  /** Staff only: checks of the photo against the pin and date. Signals to look closer, never proof. */
+  trust_flags?: TrustFlag[]
+  addenda?: Addendum[]
   created_at?: string
   events?: ReportEvent[]
   actions?: StaffAction[]
+}
+export type TrustFlag =
+  | { code: 'pin_far_from_photo'; detail: number }
+  | { code: 'old_photo'; detail: number }
+  | { code: 'photo_date_ahead'; detail: number }
+  | { code: 'no_photo_details'; detail: null }
+/** Details a resident added after sending the report; the original is never changed. */
+export type Addendum = { id: string; note: string; created_at: string; image_url: string | null }
+/** Before submitting: the resident's own open report of this issue, or a neighbours' accepted case. */
+export type Nearby = {
+  own: (Report & { distance_m: number })[]
+  cases: (CommunityCase & { distance_m: number })[]
+}
+/** Kap's daily brief: numbers counted by the API, words by the model only if every number checks out. */
+export type Brief = {
+  summary: string
+  source: 'workers_ai' | 'template'
+  facts: {
+    open: number
+    waiting: number
+    new_today: number
+    resolved_today: number
+    waiting_over_a_day: number
+    high_priority: { id: string; category: Category; place: string | null; score: number }[]
+    high_priority_count: number
+    hotspot: { place: string; open: number } | null
+  }
+  generated_at: string
 }
 export type Prediction = {
   prediction_available: boolean
@@ -48,4 +85,46 @@ export type Prediction = {
   // false when the vision model looked and saw nothing wrong
   problem_seen?: boolean
   hazards?: Hazard[]
+}
+export type PriorityReason =
+  | { code: 'category'; detail: Category; points: number }
+  | { code: 'hazard'; detail: Hazard; points: number }
+  | { code: 'residents'; detail: number; points: number }
+  | { code: 'recent'; detail: number; points: number }
+/** A suggestion for staff from severity, recency and independent residents; it never reorders anything itself. */
+export type Priority = { level: 'high' | 'medium' | 'low'; score: number; reasons: PriorityReason[] }
+export type CaseMember = {
+  id: string
+  status: Status
+  resident_category: Category
+  created_at: string
+  confirmed: boolean
+}
+/** A grouped case as one report sees it; staff also get its reports. */
+export type ReportCase = {
+  id: string
+  category: Category
+  location_label?: string | null
+  status: Status | null
+  confirmed: boolean
+  /** Hidden from residents until staff accept the case. */
+  reports: number | null
+  contributors: number | null
+  members?: CaseMember[]
+}
+/** An accepted case on the residents' shared map: no photos, descriptions or names. */
+export type CommunityCase = {
+  id: string
+  category: Category
+  status: Status
+  latitude: number
+  longitude: number
+  location_label?: string | null
+  /** Days only (YYYY-MM-DD, Philippine time). */
+  first_reported_on: string
+  last_reported_on: string
+  contributors: number
+  hazards: Hazard[]
+  open_for_evidence: boolean
+  contributed: boolean
 }

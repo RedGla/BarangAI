@@ -20,13 +20,19 @@ def client(tmp_path, monkeypatch):
     for name in ("MODEL_CHECKPOINT", "MODEL_APPROVED_SHA256", "MODEL_CONFIDENCE_THRESHOLD",
                  "VALIDATED_EMBEDDING_MODEL_VERSION", "CHECKER_MODEL_DIR", "CLOUDFLARE_VISION_MODEL", "GEOCODER"):
         monkeypatch.delenv(name, raising=False)
-    for name in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"):
+    for name in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "TRUSTED_PROXY_HOPS",
+                 "MAX_REPORTS_PER_DAY", "MAX_ADDENDA_PER_DAY", "MAX_IMAGE_EDGE"):
         monkeypatch.delenv(name, raising=False)
-    from barangai import ai, geo
+    # Face blurring needs OpenCV, which local test setups may lack; tests that cover it turn it on themselves.
+    monkeypatch.setenv("FACE_BLUR", "off")
+    from barangai import ai, brief, geo, media, privacy
     from barangai.main import create_app
 
     ai.clear_cache()
     geo.clear_cache()
+    brief.clear_cache()
+    media.clear_sanitized_cache()
+    privacy.detector.cache_clear()
 
     with TestClient(create_app()) as test_client:
         yield test_client
