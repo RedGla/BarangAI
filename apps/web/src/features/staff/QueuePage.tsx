@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { AnimatePresence, m } from 'motion/react'
-import { Layers, Link2, Search, X } from 'lucide-react'
+import { Layers, Link2, MapPin, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { NativeSelect } from '@/components/ui/native-select'
 import { DateText } from '@/components/DateText'
@@ -16,6 +16,7 @@ import { useReport, useReports } from '../reports/queries'
 import { PriorityChip } from '../reports/Priority'
 import { TrustChip } from '../reports/Trust'
 import { StatusBadge } from '../reports/StatusBadge'
+import { BarangayFilter, useBarangayFilter } from './BarangayFilter'
 
 /** Review queue as a split view; filters live in the URL so a reviewed report returns to the same list. */
 export function QueuePage() {
@@ -32,19 +33,23 @@ export function QueuePage() {
   const all = reports.data
   // A grouped case is one row (its first report); its other reports open from the case panel.
   const grouped = useMemo(() => groupCases(all ?? []), [all])
+  const barangay = params.get('barangay') ?? ''
+  const area = useBarangayFilter(all, barangay)
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const rows = grouped.rows.filter(
       report =>
         (!status || report.status === status) &&
         (!category || report.resident_category === category) &&
+        area.matches(report) &&
         (!needle ||
           report.id.toLowerCase().startsWith(needle.replace(/^#/, '')) ||
           (report.description ?? '').toLowerCase().includes(needle) ||
           t(label(report.resident_category)).toLowerCase().includes(needle)),
     )
     return sort === 'priority' ? [...rows].sort((a, b) => (b.priority?.score ?? -1) - (a.priority?.score ?? -1)) : rows
-  }, [grouped, status, category, query, sort, t])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- area.matches changes only with these two.
+  }, [grouped, status, category, query, sort, t, area.enabled, barangay])
   const search = params.toString() ? `?${params}` : ''
   function setFilter(name: string, value: string) {
     const next = new URLSearchParams(params)
@@ -104,6 +109,14 @@ export function QueuePage() {
                 ))}
               </NativeSelect>
             </label>
+            {area.enabled && (
+              <BarangayFilter
+                names={area.names}
+                value={barangay}
+                onChange={value => setFilter('barangay', value)}
+                className="col-span-2"
+              />
+            )}
           </div>
           <div className="flex items-center justify-between gap-2">
             <p className="px-0.5 text-[12.5px] text-muted-foreground" aria-live="polite">
@@ -162,6 +175,12 @@ export function QueuePage() {
                     <StatusBadge status={report.status} />
                     {report.priority && report.priority.level !== 'low' && <PriorityChip priority={report.priority} />}
                     {report.trust_flags && <TrustChip flags={report.trust_flags} />}
+                    {area.enabled && (
+                      <span className="inline-flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-[12.5px] font-semibold text-muted-foreground">
+                        <MapPin className="size-3.5" aria-hidden="true" />
+                        {report.barangay ?? t('Outside every boundary')}
+                      </span>
+                    )}
                     {grouped.sizeOf(report) > 1 && (
                       <span className="inline-flex h-6 items-center gap-1 rounded-full bg-tint px-2 text-[12.5px] font-semibold text-primary">
                         <Layers className="size-3.5" aria-hidden="true" />

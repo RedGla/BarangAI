@@ -7,6 +7,11 @@ const LanguageContext = createContext<{ language: Language; setLanguage: (value:
 })
 
 const filipino: Record<string, string> = {
+  'This pin is outside the area we cover. You can still send it, and an administrator will review it.':
+    'Nasa labas ng saklaw na lugar ang pin na ito. Maaari mo pa rin itong ipadala, at susuriin ito ng isang administrator.',
+  'Filter by barangay': 'Salain ayon sa barangay',
+  'All barangays': 'Lahat ng barangay',
+  'Outside every boundary': 'Nasa labas ng lahat ng hangganan',
   'Daily limit for added details reached':
     'Naabot mo na ang bilang ng maidadagdag na detalye ngayong araw. Subukan ulit bukas.',
   'Another photo of the same problem.': 'Isa pang larawan ng parehong problema.',

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import type { Map as LeafletMap } from 'leaflet'
 import { useText } from '../../lib/i18n'
+import { useBoundaryLayer } from './boundaries'
 
 export const BARANGAY_CENTER: [number, number] = [14.3269, 120.9364]
 
@@ -14,6 +16,8 @@ export function MapPicker({
 }) {
   const t = useText()
   const [element, setElement] = useState<HTMLDivElement | null>(null)
+  const [leaflet, setLeaflet] = useState<LeafletMap | null>(null)
+  useBoundaryLayer(leaflet)
   useEffect(() => {
     if (!element) return
     let alive = true
@@ -42,7 +46,9 @@ export function MapPicker({
         pin.setLatLng(event.latlng)
         onPick(Number(event.latlng.lat.toFixed(6)), Number(event.latlng.lng.toFixed(6)))
       })
+      setLeaflet(map)
       dispose = () => {
+        setLeaflet(null)
         map.stop()
         map.remove()
       }

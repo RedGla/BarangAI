@@ -2,7 +2,7 @@
 
 This procedure removes one report and its private photo after an approved privacy request, an approved retention decision, or cleanup of synthetic demonstration data. It requires an administrator account and access to a trusted operator terminal. It is not a resident-facing action. Do not delete reports merely because they are marked as duplicates: the duplicate review workflow preserves the originals.
 
-The project has no automatic deletion schedule or approved default retention period. The barangay or academic project owner must decide the retention period and approve individual requests. Confirm the requester and the exact report before running this irreversible operation. Use synthetic records when rehearsing it.
+The project has no automatic deletion schedule or approved default retention period. The barangay or project owner must decide the retention period and approve individual requests. Confirm the requester and the exact report before running this irreversible operation. Use synthetic records when rehearsing it.
 
 ## Inspect first
 

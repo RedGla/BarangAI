@@ -43,7 +43,8 @@ class PreferencesInput(BaseModel):
 def user_data(user):
     saved = user.preferences if isinstance(user.preferences, dict) else {}
     preferences = {key: saved[key] for key, allowed in PREFERENCES.items() if saved.get(key) in allowed}
-    return {"id": user.id, "email": user.email, "role": user.role, "preferences": preferences}
+    return {"id": user.id, "email": user.email, "role": user.role, "preferences": preferences,
+            "barangay": user.barangay.name if user.barangay_id else None}
 
 
 def client_ip(request):

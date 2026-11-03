@@ -1,6 +1,6 @@
 ---
 name: ui-critic
-description: Critiques BarangAI screenshots (from the visual-check skill) for phone/tablet usability, accessibility and fit with the paper's goals. Give it the PNG paths. Reports problems ranked by impact; doesn't edit.
+description: Critiques BarangAI screenshots (from the visual-check skill) for phone/tablet usability, accessibility and fit with the project's residents and staff. Give it the PNG paths. Reports problems ranked by impact; doesn't edit.
 tools: Read, Grep, Glob
 model: sonnet
 ---

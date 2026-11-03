@@ -2,7 +2,7 @@
 
 The manifest is a CSV with columns `path,category,split`: path relative to --root, one of the eight API
 categories (or `none` for photos that show no concern), and split `tune` or `test`. Keep the two splits
-apart: tune on `tune` only, and report accuracy on `test` only, so the paper's numbers are not inflated.
+apart: tune on `tune` only, and report accuracy on `test` only, so reported numbers are not inflated.
 
     # compare everything on the test split (Cloudflare needs CLOUDFLARE_ACCOUNT_ID / _WORKERS_AI_TOKEN)
     .venv/Scripts/python.exe apps/api/tools/evaluate_ai.py --manifest data/manifest.csv --root data

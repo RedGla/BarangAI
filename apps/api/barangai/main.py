@@ -2,12 +2,14 @@ import mimetypes
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .auth import attempts
 from .auth import router as auth_router
+from .barangays import guard_duplicate_decision
+from .barangays import router as barangays_router
 from .body_limit import ReportBodyLimitMiddleware
 from .brief import router as brief_router
 from .cases import router as cases_router
@@ -36,10 +38,11 @@ def create_app():
     app.include_router(reports_router)
     app.include_router(workflow_router)
     app.include_router(chat_router)
-    app.include_router(duplicates_router)
+    app.include_router(duplicates_router, dependencies=[Depends(guard_duplicate_decision)])
     app.include_router(cases_router)
     app.include_router(notifications_router)
     app.include_router(geo_router)
+    app.include_router(barangays_router)
     app.include_router(brief_router)
     app.add_middleware(ReportBodyLimitMiddleware)
 

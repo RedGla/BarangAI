@@ -5,6 +5,7 @@ import { useText } from '../../lib/i18n'
 import { statuses } from '../reports/categories'
 import { groupCases } from '../reports/grouping'
 import { useReports } from '../reports/queries'
+import { BarangayFilter, useBarangayFilter } from './BarangayFilter'
 import { MapLegend, StaffMap } from './StaffMap'
 
 export function MapPage() {
@@ -13,10 +14,22 @@ export function MapPage() {
   const reports = useReports()
   const [params, setParams] = useSearchParams()
   const status = params.get('status') ?? ''
+  const barangay = params.get('barangay') ?? ''
   const all = reports.data
+  const area = useBarangayFilter(all, barangay)
   // One pin per grouped case.
   const rows = useMemo(() => groupCases(all ?? []).rows, [all])
-  const visible = useMemo(() => rows.filter(report => !status || report.status === status), [rows, status])
+  const visible = useMemo(
+    () => rows.filter(report => (!status || report.status === status) && area.matches(report)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- area.matches changes only with these two.
+    [rows, status, area.enabled, barangay],
+  )
+  function setFilter(name: string, value: string) {
+    const next = new URLSearchParams(params)
+    if (value) next.set(name, value)
+    else next.delete(name)
+    setParams(next, { replace: true })
+  }
   return (
     <div className="relative h-[calc(100svh-3.5rem)] md:h-[calc(100svh-3.5rem-1rem)]">
       <StaffMap
@@ -30,7 +43,7 @@ export function MapPage() {
           <NativeSelect
             aria-label={t('Filter by status')}
             value={status}
-            onChange={event => setParams(event.target.value ? { status: event.target.value } : {}, { replace: true })}
+            onChange={event => setFilter('status', event.target.value)}
           >
             <option value="">{t('All statuses')}</option>
             {statuses.map(item => (
@@ -40,6 +53,9 @@ export function MapPage() {
             ))}
           </NativeSelect>
         </label>
+        {area.enabled && (
+          <BarangayFilter names={area.names} value={barangay} onChange={value => setFilter('barangay', value)} />
+        )}
         <p className="text-[12.5px] text-muted-foreground">
           {visible.length} {t('of')} {rows.length} {t('reports')} · {t('Click a pin to open it.')}
         </p>

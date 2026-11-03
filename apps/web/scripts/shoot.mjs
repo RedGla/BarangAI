@@ -116,6 +116,19 @@ const FLOWS = {
     }
     await shot('7-sent')
   },
+  // The warning for a pin outside every barangay (a synthetic point). No submit.
+  'report-outside': async (page, shot) => {
+    await page.goto(new URL('report', base).href, { waitUntil: 'networkidle0' })
+    await addPhoto(page)
+    await new Promise(r => setTimeout(r, 900))
+    await click(page, 'Next')
+    await click(page, 'Enter coordinates manually')
+    await page.type('input[placeholder="14.326900"]', '14.3541')
+    await page.type('input[placeholder="120.936400"]', '120.9196')
+    await click(page, 'Adjust pin on map')
+    await new Promise(r => setTimeout(r, 1800))
+    await shot('1-location')
+  },
   // The Review step when location came from the phone (a synthetic fix), so the auto-fill check shows. No submit.
   'report-autofill': async (page, shot) => {
     await context.overridePermissions(new URL(base).origin, ['geolocation'])
