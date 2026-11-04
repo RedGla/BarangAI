@@ -122,6 +122,7 @@ def preview_prediction(
     require_role(user, {"resident"})
     rate_limit(request, "preview", 20, key=user.id)
 <<<<<<< ours
+<<<<<<< ours
     resident_id = user.id
     db.commit()  # The face check is slow, and a few uploads must not use up the small connection pool.
     # Checked first, so invalid uploads use up no allowance.
@@ -131,6 +132,13 @@ def preview_prediction(
     # Checked first, so invalid uploads use up no allowance.
     sanitized = sanitized_upload(image)
     if not take(db, period_key(f"preview:{user.id}"), limit_setting("MAX_PREVIEWS_PER_DAY", 40)):
+>>>>>>> theirs
+=======
+    resident_id = user.id
+    db.commit()  # The face check is slow, and a few uploads must not use up the small connection pool.
+    # Checked first, so invalid uploads use up no allowance.
+    sanitized = sanitized_upload(image)
+    if not take(db, period_key(f"preview:{resident_id}"), limit_setting("MAX_PREVIEWS_PER_DAY", 40)):
 >>>>>>> theirs
         raise HTTPException(429, "Daily limit for photo suggestions reached")
     # About 5 neurons each, so the default leaves room for the chatbot in Cloudflare's 10,000 a day. Past it, the
@@ -194,9 +202,13 @@ def submit_report(
     if case and cases.barangay_of(db, case) != barangay_id:
         case = None
 <<<<<<< ours
+<<<<<<< ours
     joined_case = case.id if case else None
 =======
     resident_id, joined_case = user.id, case.id if case else None
+>>>>>>> theirs
+=======
+    joined_case = case.id if case else None
 >>>>>>> theirs
     # Accounts need no email check, so a cap per resident alone would not protect the 1 GB photo bucket. Counted only
     # now, so one resident's invalid uploads cannot use up the whole site's allowance.
@@ -298,6 +310,7 @@ def add_details(
     rate_limit(request, "addendum", key=user.id)
     within_daily_cap(db, ReportAddendum, ReportAddendum.author_id, user.id, "MAX_ADDENDA_PER_DAY", 20,
                      "Daily limit for added details reached")
+<<<<<<< ours
     author_id, addendum_id = user.id, uid()
     db.commit()  # No database connection waits on the face check or the photo upload.
     sanitized = sanitized_upload(image) if image is not None and image.filename else None
@@ -305,6 +318,11 @@ def add_details(
 =======
     author_id, addendum_id = user.id, uid()
     db.commit()  # No database connection waits on the photo upload.
+>>>>>>> theirs
+=======
+    author_id, addendum_id = user.id, uid()
+    db.commit()  # No database connection waits on the face check or the photo upload.
+    sanitized = sanitized_upload(image) if image is not None and image.filename else None
 >>>>>>> theirs
     location = save_image(addendum_id, sanitized) if sanitized else None
     # The report may have been closed or deleted during the upload.
