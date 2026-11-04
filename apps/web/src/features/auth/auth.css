@@ -143,7 +143,7 @@
   font-size: 19px;
   font-weight: 700;
 }
-.auth-form input {
+.auth-form input:not([type='checkbox']) {
   background: white;
   border: 2px solid #d5deeb;
   height: 51px;
@@ -275,7 +275,7 @@
   .auth-form label > span:first-child {
     font-size: 16px;
   }
-  .auth-form input {
+  .auth-form input:not([type='checkbox']) {
     height: 49px;
     font-size: 16px;
     border-radius: 13px;
@@ -710,4 +710,16 @@
   .auth-ui {
     transition: none;
   }
+}
+
+/* Preserve the existing registration agreement control and legal footer. */
+.auth-form input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: #005cf0;
+}
+.auth-form input[type='checkbox']:focus-visible {
+  outline: 3px solid #005cf0;
+  outline-offset: 3px;
 }

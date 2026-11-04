@@ -37,15 +37,6 @@ def threshold() -> float:
 
 @lru_cache(maxsize=1)
 def load_runtime(folder: str):
-<<<<<<< ours
-<<<<<<< ours
-=======
-    import numpy as np
-    import onnxruntime
-
->>>>>>> theirs
-=======
->>>>>>> theirs
     path = Path(folder)
     meta = json.loads((path / "checker.json").read_text(encoding="utf-8"))
     model = path / "visual.onnx"
