@@ -246,6 +246,8 @@ const filipino: Record<string, string> = {
   'Fallen trees': 'Mga natumbang puno',
   'Uncollected garbage': 'Hindi nakolektang basura',
   'Damaged signage': 'Sirang karatula',
+  'Your report was grouped with others about the same concern, so it now shares their status.':
+    'Isinama ang ulat mo sa iba tungkol sa parehong problema, kaya pareho na ang katayuan nila.',
   'Broken streetlights': 'Sirang ilaw sa kalye',
   'Exposed wiring': 'Nakalantad na kawad ng kuryente',
   Other: 'Iba pa',
