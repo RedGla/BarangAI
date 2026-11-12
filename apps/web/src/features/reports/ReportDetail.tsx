@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
   ImagePlus,
@@ -18,8 +18,8 @@ import { Select } from '@/components/ui/select'
 import { DateText } from '@/components/DateText'
 import { Alert } from '@/components/page'
 import { cn } from '@/lib/utils'
+import { shownError } from '../../lib/live'
 import { Txt, useText } from '../../lib/i18n'
-import { useMe } from '../auth/queries'
 import { categories, hazardLabels, label, rejectionReasons } from './categories'
 import { CategoryTile } from './CategoryIcon'
 import { DeletionReview, RequestDeletion } from './DeletionPanels'
@@ -104,7 +104,6 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
   const t = useText()
   const report = useReport(id)
   const detail: Report | undefined = report.data
-  const me = useMe()
   const [imageError, setImageError] = useState(false)
   const facts = (
     <>
@@ -136,9 +135,7 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
       <div className="space-y-5">{facts}</div>
       {staff && (
         <div className="space-y-5 xl:sticky xl:top-4">
-          {detail && !report.isPlaceholderData && (
-            <DeletionReview key={`delete-${detail.id}`} detail={detail} canDecide={me.data?.role === 'administrator'} />
-          )}
+          {detail && !report.isPlaceholderData && <DeletionReview key={`delete-${detail.id}`} detail={detail} />}
           {/* Seed staff choices from the full report, never the list row, and reset them per report. */}
           {/* An unchecked "I see this too" gets its case decision first; the API refuses status changes until then. */}
           {detail && !report.isPlaceholderData && !(detail.case_id && !detail.case_confirmed) && (
@@ -151,9 +148,9 @@ export function ReportView({ id, staff }: { id: string; staff: boolean }) {
           <DuplicateReview id={id} />
         </div>
       )}
-      {report.error && (
+      {shownError(report) && (
         <Alert>
-          <Txt>{report.error.message}</Txt>
+          <Txt>{shownError(report)?.message ?? ''}</Txt>
         </Alert>
       )}
     </div>
@@ -166,23 +163,30 @@ function ReportFacts({ detail }: { detail: Report }) {
   return (
     <>
       {/* Three separate fields: what the resident chose, what the model guessed, what staff confirmed. */}
-      <dl className="hairline grid grid-cols-3 divide-x rounded-2xl bg-card">
-        {[
-          { term: 'Resident category', value: detail.resident_category },
-          { term: 'AI suggestion', value: detail.model_category, ai: true },
-          { term: 'Verified category', value: detail.verified_category },
-        ].map(item => (
-          <div key={item.term} className="min-w-0 p-3">
-            <dt className="flex items-center gap-1 text-[12px] leading-tight text-muted-foreground">
-              {item.ai && <Sparkles className="size-3 shrink-0" aria-hidden="true" />}
-              <Txt>{item.term}</Txt>
-            </dt>
-            <dd className={cn('mt-1 text-[15px] leading-snug font-semibold', !item.value && 'text-muted-foreground')}>
-              <Txt>{label(item.value)}</Txt>
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <div className="@container">
+        <dl className="hairline grid divide-y rounded-2xl bg-card @sm:grid-cols-3 @sm:divide-x @sm:divide-y-0">
+          {[
+            { term: 'Resident category', value: detail.resident_category },
+            { term: 'AI suggestion', value: detail.model_category, ai: true },
+            { term: 'Verified category', value: detail.verified_category },
+          ].map(item => (
+            <div key={item.term} className="flex min-w-0 items-baseline justify-between gap-3 p-3 @sm:block">
+              <dt className="flex items-center gap-1 text-[12px] leading-tight text-muted-foreground">
+                {item.ai && <Sparkles className="size-3 shrink-0" aria-hidden="true" />}
+                <Txt>{item.term}</Txt>
+              </dt>
+              <dd
+                className={cn(
+                  'text-right text-[15px] leading-snug font-semibold @sm:mt-1 @sm:text-left',
+                  !item.value && 'text-muted-foreground',
+                )}
+              >
+                <Txt>{label(item.value)}</Txt>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
       {detail.hazards && detail.hazards.length > 0 && (
         <p className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
           <Sparkles className="size-3.5" aria-hidden="true" />
@@ -305,10 +309,29 @@ function StatusControls({ detail }: { detail: Report }) {
   const [verified, setVerified] = useState<Category>(detail.verified_category ?? detail.resident_category)
   const [note, setNote] = useState('')
   const [reason, setReason] = useState('')
+  // A colleague can move the report while this note is being written. The note was meant for the old status, so it
+  // must not go out with the new buttons. A change made here is still pending when the status updates.
+  const [moved, setMoved] = useState(false)
+  const lastStatus = useRef(detail.status)
+  useEffect(() => {
+    if (detail.status === lastStatus.current) return
+    lastStatus.current = detail.status
+    if (!change.isPending && note.trim()) {
+      setNote('')
+      setReason('')
+      setMoved(true)
+    }
+  }, [change.isPending, detail.status, note])
   const actions = nextActions(detail.status)
-  if (actions.length === 0) return null
+  const notice = moved && (
+    <Alert>
+      <Txt>This report just changed. Your note may not have been sent. Check the history, then write it again.</Txt>
+    </Alert>
+  )
+  if (actions.length === 0) return notice ? <Panel title="Change status">{notice}</Panel> : null
   const described = Boolean(note.trim())
   function transition(status: Status) {
+    const from = detail.status
     change.mutate(
       {
         status,
@@ -316,11 +339,21 @@ function StatusControls({ detail }: { detail: Report }) {
         ...(status === 'Rejected' ? { rejection_reason: reason } : {}),
         note: note.trim(),
       },
-      { onSuccess: () => setNote('') },
+      {
+        onSuccess: () => setNote(''),
+        // Refused because a colleague got there first: same as being moved while writing.
+        onError: () => {
+          if (lastStatus.current === from) return
+          setNote('')
+          setReason('')
+          setMoved(true)
+        },
+      },
     )
   }
   return (
     <Panel title="Change status" className="space-y-3">
+      {notice}
       {detail.status === 'Under Verification' && (
         <label className={fieldLabel}>
           <Txt>Verified category</Txt>
@@ -348,7 +381,15 @@ function StatusControls({ detail }: { detail: Report }) {
       )}
       <label className={fieldLabel}>
         <Txt>Reason or description (required)</Txt>
-        <Textarea rows={2} value={note} onChange={event => setNote(event.target.value)} className="text-foreground" />
+        <Textarea
+          rows={2}
+          value={note}
+          onChange={event => {
+            setNote(event.target.value)
+            setMoved(false)
+          }}
+          className="text-foreground"
+        />
         <span className="text-[13px] font-normal text-muted-foreground">
           <Txt>The resident sees this.</Txt>
         </span>
@@ -569,6 +610,8 @@ function CasePanel({ id }: { id: string }) {
   const data = info.data
   if (!data) return null
   const others = (data.members ?? []).filter(member => member.id !== id)
+  // A closed case takes no more reports; the API refuses, so offer only what can work.
+  const caseClosed = data.status !== 'Accepted' && data.status !== 'In Progress'
   return (
     <Panel title="Grouped case" className="space-y-3">
       <p className="text-[14px] text-muted-foreground">
@@ -600,7 +643,7 @@ function CasePanel({ id }: { id: string }) {
             />
           </label>
           <div className="flex flex-wrap gap-2">
-            {(['confirmed', 'rejected'] as const).map(decision => (
+            {(caseClosed ? (['rejected'] as const) : (['confirmed', 'rejected'] as const)).map(decision => (
               <Button
                 key={decision}
                 size="sm"
@@ -609,7 +652,13 @@ function CasePanel({ id }: { id: string }) {
                 disabled={decide.isPending}
                 onClick={() => decide.mutate({ decision, ...(note.trim() ? { note: note.trim() } : {}) })}
               >
-                <Txt>{decision === 'confirmed' ? 'Same issue · add to case' : 'Different issue'}</Txt>
+                <Txt>
+                  {decision === 'confirmed'
+                    ? 'Same issue · add to case'
+                    : caseClosed
+                      ? 'Review on its own'
+                      : 'Different issue'}
+                </Txt>
               </Button>
             ))}
           </div>

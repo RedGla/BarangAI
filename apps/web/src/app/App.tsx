@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
-import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { focusManager, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router'
 import { LazyMotion, MotionConfig } from 'motion/react'
 import { LoaderCircle } from 'lucide-react'
 import { ApiError } from '../lib/api'
+import { sessionExpired } from '../features/auth/queries'
 import { LanguageProvider, Txt } from '../lib/i18n'
 import { AuthPage } from '../features/auth/AuthPage'
 import { isStaff, useMe } from '../features/auth/queries'
@@ -24,6 +25,9 @@ const RewardsPage = lazy(() =>
 )
 const RewardsDeskPage = lazy(() =>
   import('../features/staff/RewardsDeskPage').then(module => ({ default: module.RewardsDeskPage })),
+)
+const RecordsPage = lazy(() =>
+  import('../features/staff/RecordsPage').then(module => ({ default: module.RecordsPage })),
 )
 const StaffShell = lazy(() => import('../features/staff/StaffShell').then(module => ({ default: module.StaffShell })))
 const OverviewPage = lazy(() =>
@@ -111,6 +115,7 @@ function AppRoutes() {
             <Route path="desk/map" element={<MapPage />} />
             <Route path="desk/updates" element={<UpdatesPage />} />
             <Route path="desk/rewards" element={<RewardsDeskPage />} />
+            <Route path="desk/records" element={<RecordsPage />} />
             <Route path="*" element={<Navigate to="/desk" replace />} />
           </Route>
         ) : (
@@ -132,9 +137,18 @@ function AppRoutes() {
 }
 
 export default function App() {
-  const [client] = useState(
-    () => new QueryClient({ defaultOptions: { queries: { retry }, mutations: { retry: false } } }),
-  )
+  const [client] = useState(() => {
+    const created: QueryClient = new QueryClient({
+      // Live checks would otherwise stop on an expired session and leave a frozen, signed-in screen.
+      queryCache: new QueryCache({
+        onError: error => {
+          if (error instanceof ApiError && error.status === 401) sessionExpired(created)
+        },
+      }),
+      defaultOptions: { queries: { retry }, mutations: { retry: false } },
+    })
+    return created
+  })
   return (
     <QueryClientProvider client={client}>
       <ThemeProvider>
