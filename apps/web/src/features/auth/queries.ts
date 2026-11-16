@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { clearAllDrafts } from '../reports/draft'
 import { ApiError, api, post } from '../../lib/api'
 
 export type Preferences = { theme?: 'system' | 'light' | 'dark'; language?: 'en' | 'fil' }
@@ -84,7 +85,13 @@ export function useSignIn() {
 
 export function useSignOut() {
   const finish = useFinishSession()
-  return useMutation({ mutationFn: () => post<void>('/auth/logout'), onSuccess: finish })
+  return useMutation({
+    mutationFn: () => post<void>('/auth/logout'),
+    onSuccess: () => {
+      void clearAllDrafts()
+      finish()
+    },
+  })
 }
 
 /** Back to sign-in: after signing out, or when a live check finds the session has expired. */
@@ -127,6 +134,9 @@ export function useDeleteAccount() {
   const finish = useFinishSession()
   return useMutation({
     mutationFn: (body: { email: string; password?: string }) => post<void>('/auth/delete-account', body),
-    onSuccess: finish,
+    onSuccess: () => {
+      void clearAllDrafts()
+      finish()
+    },
   })
 }
