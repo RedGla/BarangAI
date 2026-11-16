@@ -4,6 +4,19 @@ Started 4 November 2026 from a code, security, UX and market audit. This is the 
 
 **Evidence:** R = reproduced or measured here. C = read in the code. E = outside source (see business-model.md). H = hypothesis, not yet tested.
 
+## Current state (5 November)
+
+States: Verified complete, Blocked, Deferred, Ready. The tables below keep each item's evidence and acceptance criteria.
+
+| State | Items |
+| --- | --- |
+| **Verified complete** (branch `improvement/product-audit-implementation`) | B5, B6, P1 (except QR), P2 to P6, P8 to P14, M1 to M10, M12 to M14 (M11: the command only), P7 confirm prompt, plus the demo batch: synthetic story, demo server and label, blur cue, what your barangay fixed, comparison with last month, city rollup. Android-only and screen-reader parts of P2, P4, P11 and P12 need a device: see Blocked. |
+| **Verified complete: deliverables** | Business model, pitch contents, video handoff and Q&A. These are documents: none of them shows demand or validation. |
+| **Blocked: owner decision** | Q1 MobileCLIP2 (B1); Q2 rewards (B3); Q3 pilot buyer; Q4 same-Wi-Fi limit (F1); Q5 white or dark text on the primary button (P10: comparison in `.shots/batch5`); P7 unlink, which needs a status-path exception; M11 running the photo move and deleting the stray copies; approval of `visual-check` screenshots; hall reset procedure in `docs/mobile.md`. |
+| **Blocked: outside this work** | B2 counsel; V1 to V4 and V6 conversations with officials and legal opinions; human Filipino review; test on an Android device, TalkBack and NVDA; CI jobs first run on GitHub (needs a push). |
+| **Ready, small** | P15 draft edge cases; V5 re-measure AI cost; P1 QR code (needs a library, so an approval); dev-only `npm audit` findings; 2,000-report list cap behind Overview counts. |
+| **Deferred** | Section 5 and section 6 below, including B4 (TLS), F1 to F5. |
+
 ## Done in the first batches (4 November)
 
 | ID | What changed | Evidence it works |
@@ -19,6 +32,7 @@ Started 4 November 2026 from a code, security, UX and market audit. This is the 
 | D9 | Staff report view: the three category fields no longer overlap; a staff account with no barangay is told why its desk is empty | Screenshots awaiting approval |
 | D10 | Security and backend batch, API side (B5, B6, P1 API, M1, M3 to M10, M12 to M14; P7 without unlink): see docs/api.md and docs/architecture.md | `test_admin.py`, `test_limits.py`, `test_points_ledger.py`, `test_links_and_polls.py`, `test_export_erasure_ops.py` |
 | D12 | Resident batch: P2, P3, P4, P5, P12, P13 resident side, P14 strings and scan (Filipino review by a person still open), P10 except the primary button, P11 resident side (TalkBack and NVDA not run). Reads refused on a temporary password; a terminal reset makes staff and administrators choose their own; administrators can delete feedback; `backup consolidate-photos` prepared for M11 and not run on real data; M2 | `resident-help.test.tsx`, `contrast.test.ts`, `api-errors-i18n.test.ts`, `mobile-fallback.test.ts`, `test_staff_desk.py`, `test_data_safety.py`, `scripts/journey.mjs`. The Android screens compile but were not run on a device; screenshots await approval |
+| D13 | Demo batch: `seed_demo --story`, `DEMO_MODE` label, `deploy/demo.ps1`, blur counts on the Photo step, "What your barangay fixed", comparison with last month, rollup by barangay (admin only, CSV) | `test_demo_story.py`, `records.test.tsx`, `community.test.tsx`, `ai-form.test.tsx`; screenshots in `.shots/batch6` await approval |
 | D11 | Staff desk batch: P1 (accounts page, first-run checklist, forced password change, phone address as text), P6, P8 (thumbnails, open-only default, saved phrases, save and next, bulk "Start verification"), P9, P11 for staff screens, P13 staff side, M8 screen, P7's confirm prompt (a safety net so far: screens only link pairs staff already confirmed, which skip the check) | `test_staff_desk.py`, `staff-desk.test.tsx`, screenshots awaiting approval |
 
 ## Open: 1. Blockers and current risks
@@ -78,7 +92,7 @@ Started 4 November 2026 from a code, security, UX and market audit. This is the 
 
 - Capture now, send later: photo and GPS kept on the phone until the server is back. Large, but softens the same-Wi-Fi limit.
 - Bulk status changes past "Start verification". No-pin reports (landmark or barangay only), which change jurisdiction logic.
-- Per-barangay settings, city rollup report and SMS notices (about ₱0.56 a text, E).
+- Per-barangay settings and SMS notices (about ₱0.56 a text, E).
 
 ## Open: 6. Deployment and launch (deliberately last)
 
@@ -108,4 +122,5 @@ Started 4 November 2026 from a code, security, UX and market audit. This is the 
 - **Q2. Rewards:** keep points in the first paid offer, or sell without public-funded rewards until counsel answers (recommended)?
 - **Q3. Pilot buyer:** Dasmariñas barangays first (recommended), HOAs, or the city?
 - **Q5. Primary button label:** keep white on green (2.09:1, Duolingo's look) or switch to the dark label `#131f24` (recommended on readability, since residents use it outdoors)? Comparison: `.shots/batch5/primary-label-current.png` and `primary-label-dark.png`.
+- **Q5. Primary button text:** white (2.09:1) or dark `#131f24` (recommended)? Comparison in `.shots/batch5/`.
 - **Q4. Same-Wi-Fi limit:** accept that real resident pilots wait on F1 (recommended), or build capture-and-send-later first?
