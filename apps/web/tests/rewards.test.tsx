@@ -24,7 +24,12 @@ const voucher = {
   used_at: null,
 }
 
-function serve(role: string, points: number, calls: Array<{ url: string; init?: RequestInit }> = []) {
+function serve(
+  role: string,
+  points: number,
+  calls: Array<{ url: string; init?: RequestInit }> = [],
+  shops = [{ id: 'b1', name: 'San Jose' }],
+) {
   let redeemed = false
   vi.stubGlobal(
     'fetch',
@@ -34,7 +39,7 @@ function serve(role: string, points: number, calls: Array<{ url: string; init?: 
       if (url.endsWith('/auth/me'))
         return Response.json({ id: 'u1', email: 'someone@example.test', role, barangay: 'San Jose' })
       if (url.endsWith('/points')) return Response.json({ balance: points, history: [] })
-      if (url.endsWith('/rewards/barangays')) return Response.json([{ id: 'b1', name: 'San Jose' }])
+      if (url.endsWith('/rewards/barangays')) return Response.json(shops)
       if (url.includes('/rewards?barangay_id=b1')) return Response.json([reward])
       if (url.endsWith('/rewards/w1/redeem')) {
         redeemed = true
@@ -77,6 +82,14 @@ describe('rewards', () => {
     fireEvent.click(await screen.findByLabelText('Choose a barangay'))
     fireEvent.click(await screen.findByRole('option', { name: 'San Jose' }))
     expect(await screen.findByRole('button', { name: 'Not enough points' })).toBeDisabled()
+  })
+
+  it('explains that there are no shops, instead of an empty list, before barangays are loaded', async () => {
+    serve('resident', 0, [], [])
+    window.history.replaceState(null, '', '/rewards')
+    render(<App />)
+    expect(await screen.findByText('No barangay shops yet')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Choose a barangay')).not.toBeInTheDocument()
   })
 
   it('lets staff mark a code as used and shows their shop', async () => {

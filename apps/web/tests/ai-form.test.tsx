@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/app/App'
 
@@ -75,10 +75,28 @@ describe('faces on screen', () => {
     expect((await shown())[0]).toHaveClass('blur-2xl')
     expect(screen.getAllByText('Hiding faces and plates…').length).toBeGreaterThan(0)
     expect(requests.some(url => url.endsWith('/reports/predict'))).toBe(false)
+    // The original can never be enlarged.
+    expect(screen.queryByRole('button', { name: 'Enlarge photo' })).not.toBeInTheDocument()
     finish(Response.json({ preview_image: 'data:image/jpeg;base64,AAAA' }))
     await waitFor(() => expect(screen.getAllByAltText('Preview of incident photo')[0]).not.toHaveClass('blur-2xl'))
     expect(screen.getAllByAltText('Preview of incident photo')[0]).toHaveAttribute('src', 'data:image/jpeg;base64,AAAA')
     await waitFor(() => expect(requests.some(url => url.endsWith('/reports/predict'))).toBe(true))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enlarge photo' })[0])
+    const viewer = await screen.findByRole('dialog', { name: 'Report photo' })
+    expect(within(viewer).getByAltText('Preview of incident photo')).toHaveAttribute(
+      'src',
+      'data:image/jpeg;base64,AAAA',
+    )
+    fireEvent.click(within(viewer).getByRole('button', { name: 'Close photo' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Report photo' })).not.toBeInTheDocument())
+  })
+
+  it('never offers to enlarge the photo when the blurred copy cannot be fetched', async () => {
+    servePreview(async () => Response.json({ detail: 'down' }, { status: 503 }))
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText(/incident photo/i), { target: { files: [photo()] } })
+    expect((await screen.findAllByText(/Preview hidden/)).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Enlarge photo' })).not.toBeInTheDocument()
   })
 
   it('stays blurred when the blurred copy cannot be fetched, and still asks the AI', async () => {

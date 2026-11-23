@@ -70,6 +70,16 @@ function Shop({ balance }: { balance: number }) {
   const barangays = useShopBarangays()
   const [barangay, setBarangay] = useState('')
   const shop = useShop(barangay)
+  if (barangays.isLoading) return <PageSpinner />
+  // No boundaries loaded means no barangays, so there is no shop to pick: say so instead of an empty list.
+  if (barangays.data?.length === 0)
+    return (
+      <EmptyState
+        icon={<Gift className="size-8" aria-hidden="true" />}
+        title={t('No barangay shops yet')}
+        body={t('Shops open once the barangays are set up. Your points stay safe until then.')}
+      />
+    )
   return (
     <div className="space-y-3">
       <label className="block space-y-1.5 text-[14px] font-bold">

@@ -138,6 +138,16 @@ const FLOWS = {
     }
     await shot('7-sent')
   },
+  // The photo enlarged over the blurred page, once the server's blurred copy is back. No submit.
+  'report-viewer': async (page, shot) => {
+    await page.goto(new URL('report', base).href, { waitUntil: 'networkidle0' })
+    await addPhoto(page)
+    await page.waitForSelector('button[aria-label="Enlarge photo"]', { visible: true, timeout: 20000 })
+    await shot('1-photo')
+    await page.click('button[aria-label="Enlarge photo"]')
+    await new Promise(r => setTimeout(r, 500))
+    await shot('2-enlarged')
+  },
   // The warning for a pin outside every barangay (a synthetic point). No submit.
   'report-outside': async (page, shot) => {
     await page.goto(new URL('report', base).href, { waitUntil: 'networkidle0' })
