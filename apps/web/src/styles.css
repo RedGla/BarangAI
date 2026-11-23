@@ -344,6 +344,37 @@
   }
 }
 
+/* The enlarged photo pops in over a page that blurs away. */
+.photo-viewer-backdrop[data-state='open'] {
+  animation: viewer-fade 200ms ease-out;
+}
+.photo-viewer-backdrop[data-state='closed'] {
+  animation: viewer-fade 150ms ease-in reverse;
+}
+.photo-viewer[data-state='open'] > img {
+  animation: viewer-pop 240ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.photo-viewer[data-state='closed'] > img {
+  animation: viewer-pop 150ms ease-in reverse;
+}
+@keyframes viewer-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes viewer-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .photo-viewer-backdrop,
+  .photo-viewer > img {
+    animation: none !important;
+  }
+}
+
 /* A phone's keyboard needs the room, so the tab bar steps aside while someone types. */
 .keyboard-open .resident-shell {
   --tab-offset: env(safe-area-inset-bottom);

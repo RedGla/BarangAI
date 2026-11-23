@@ -6,6 +6,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  Expand,
   ChevronLeft,
   ChevronRight,
   ImagePlus,
@@ -34,6 +35,7 @@ import { ResidentAccount } from '../../app/ResidentShell'
 import { categories, hazardLabels, label } from './categories'
 import { CategoryTile } from './CategoryIcon'
 import { MapPicker } from './MapPicker'
+import { PhotoViewer } from './PhotoViewer'
 import { devicePosition, photoCoordinates, useBarangayAt, useStreetName, type LocationSource } from './location'
 import { compressPhoto, MAX_PICK_BYTES, MAX_UPLOAD_BYTES, photoDetails, type PhotoDetails } from './photo'
 import { findNearby, reportKeys, useCommunityCases, useSubmitReport } from './queries'
@@ -203,6 +205,7 @@ export function ReportForm() {
   function pickPhoto(file: File) {
     setPhoto(null)
     setPreview('')
+    setPreviewState('checking')
     // "I see this too" keeps the case's category; otherwise the new photo's AI answer fills it.
     setCategory(joining?.category ?? '')
     if (aiDescription) setDescription('')
@@ -361,6 +364,7 @@ export function ReportForm() {
     setSubmitted(null)
     setPhoto(null)
     setPreview('')
+    setPreviewState('checking')
     setPrediction(null)
     setDismissedHazards([])
     setCategory('')
@@ -970,6 +974,9 @@ function ProtectedPhoto({
   thumb?: boolean
 }) {
   const t = useText()
+  const [viewing, setViewing] = useState(false)
+  // Only the server's blurred copy may be enlarged: before it arrives, the original is all there is.
+  const canView = state === 'ready'
   return (
     <div className={cn('relative w-full overflow-hidden', className)}>
       {/* A new element for each source: one <img> keeps painting its old picture until the next has loaded. */}
@@ -979,6 +986,24 @@ function ProtectedPhoto({
         src={src}
         alt={t('Preview of incident photo')}
       />
+      {canView && (
+        <>
+          <button
+            type="button"
+            onClick={() => setViewing(true)}
+            aria-label={t('Enlarge photo')}
+            className={cn(
+              'absolute focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+              thumb
+                ? 'inset-0'
+                : 'top-2 right-2 grid size-11 place-items-center rounded-full border-2 border-b-4 border-white/40 bg-black/45 text-white backdrop-blur-sm transition-transform active:translate-y-0.5 active:border-b-2',
+            )}
+          >
+            {!thumb && <Expand className="size-5" strokeWidth={2.75} aria-hidden="true" />}
+          </button>
+          <PhotoViewer src={src} open={viewing} onOpenChange={setViewing} />
+        </>
+      )}
       {state !== 'ready' && !thumb && (
         <div
           className="absolute inset-0 grid place-items-center bg-black/25 p-3 text-center text-[14px] font-medium text-white"
